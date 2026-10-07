@@ -63,6 +63,8 @@ kbd{font:600 .78rem/1 var(--text);background:var(--lime);color:var(--ink);paddin
 #chatlog{position:absolute;left:18px;top:94px;width:min(340px,72vw);display:flex;flex-direction:column;gap:3px;pointer-events:none}
 .cm{background:rgba(10,26,28,.72);padding:.3rem .6rem;border-radius:6px;font-size:.86rem;line-height:1.3;color:#f6efe0;word-break:break-word;transition:opacity 1.2s;border-left:3px solid var(--gold)}.cm b{color:var(--gold);font-weight:600}.cm.me{border-left-color:var(--ksrtc)}.cm.old{opacity:0}#chatlog.open .cm.old{opacity:1}
 #chatin{display:none;position:absolute;left:18px;top:min(40vh,240px);width:min(340px,72vw);pointer-events:auto;font:600 1rem var(--text);padding:.65rem .8rem;border-radius:6px;border:2px solid var(--gold);background:rgba(10,26,28,.92);color:var(--lime);z-index:6}
+#micbtn{display:none;position:absolute;left:22px;bottom:240px;width:58px;height:58px;border-radius:50%;align-items:center;justify-content:center;text-align:center;font:700 .72rem/1.05 var(--display);background:rgba(10,26,28,.72);border:2px solid var(--lime);color:var(--lime);pointer-events:auto;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}#micbtn.on{background:#2e9d48;border-color:#fff}#micbtn.bad{border-color:var(--ksrtc);color:#ff9a9a}#micbtn.talk{box-shadow:0 0 0 5px rgba(46,157,72,.55)}@media (pointer:fine){#micbtn{left:18px;bottom:252px;width:auto;height:auto;border-radius:6px;padding:.4rem .7rem}}
+.nm.talk{background:#2e9d48}.nm.talk::before{content:'● ';color:#fff}
 .nm{position:absolute;left:0;top:0;pointer-events:none;font:600 .8rem var(--text);color:#fff;background:rgba(10,26,28,.65);padding:.1rem .5rem;border-radius:10px;white-space:nowrap;text-shadow:0 1px 2px #000;will-change:transform}
 @media (max-width:720px){#keys{display:none}#map{width:120px;height:120px}#fps{left:150px}}
 @media (prefers-reduced-motion:reduce){#title,#toast,#start,#fade{transition:none}}
@@ -2328,31 +2330,34 @@ const MYLOOK=(()=>{ const P=a=>a[Math.floor(Math.random()*a.length)]; let o=null
   return o; })();
 const _nv=new V3();
 const Net = {
+  peers:new Map(), actx:null, stream:null, track:null, myAn:null, micOn:false, micBtn:null, ice:null, voiceT:0, lvlT:0,
   ws:null, on:false, id:null, url:null, name:'', remote:new Map(), info:{}, sendAcc:0, retry:0, closing:false,
   resolveUrl(){ const q=new URLSearchParams(location.search).get('server'); if(q) return q.replace(/^http/,'ws'); if(window.NET_URL) return window.NET_URL; if(/^https?:$/.test(location.protocol)) return location.origin.replace(/^http/,'ws')+'/ws'; return null; },
   init(){ this.url=this.resolveUrl(); const $=id=>document.getElementById(id), hud=$('hud');
     const mk=(tag,id)=>{ const e=document.createElement(tag); e.id=id; hud.appendChild(e); return e; };
     this.infoEl=mk('div','netinfo'); this.log=mk('div','chatlog'); this.chatIn=mk('input','chatin'); this.chatIn.maxLength=140; this.chatIn.placeholder='Message people within 30 m…'; this.chatIn.autocomplete='off';
+    this.micBtn=mk('div','micbtn'); this.micBtn.textContent='Mic off'; this.micBtn.addEventListener('pointerdown',e=>{ e.preventDefault(); this.toggleMic(); });
     const nm=$('pname'); if(nm){ try{ nm.value=localStorage.getItem('kzk_name')||''; }catch(e){} }
     const note=$('mp-note'); if(note) note.textContent=this.url?'Multiplayer connects when you press start — people near you can see and talk to you.':'Single player (no multiplayer server linked).'; if(!this.url&&$('mp')) $('mp').style.display='none';
     this.chatIn.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); this.closeChat(true); } else if(e.key==='Escape'){ e.preventDefault(); this.closeChat(false); } });
-    addEventListener('keydown',e=>{ if(e.code==='Enter'&&!window.__typing&&Game.playing&&this.on&&document.getElementById('travel').hidden){ e.preventDefault(); this.openChat(); } });
+    addEventListener('keydown',e=>{ if(e.code==='KeyB'&&!window.__typing&&Game.playing&&this.on&&!e.repeat) this.toggleMic(); if(e.code==='Enter'&&!window.__typing&&Game.playing&&this.on&&document.getElementById('travel').hidden){ e.preventDefault(); this.openChat(); } });
     window.__openChat=()=>this.openChat(); },
-  setInfo(){ if(!this.infoEl) return; if(!this.on){ this.infoEl.style.display='none'; return; } let near=0; for(const r of this.remote.values()) if(Math.hypot(r.x-Player.x,r.z-Player.z)<30) near++; this.infoEl.style.display='block'; this.infoEl.textContent='● Online · '+(this.total||1)+' playing · '+near+' near you · Enter = chat'; },
+  setInfo(){ if(!this.infoEl) return; if(!this.on){ this.infoEl.style.display='none'; return; } let near=0; for(const r of this.remote.values()) if(Math.hypot(r.x-Player.x,r.z-Player.z)<30) near++; this.infoEl.style.display='block'; this.infoEl.textContent='● Online · '+(this.total||1)+' playing · '+near+' near you · Enter = chat · B = mic'; },
   connect(){ if(!this.url||this.ws) return; const nm=document.getElementById('pname'); let n=(nm&&nm.value||'').replace(/[^\p{L}\p{N} _.-]/gu,'').trim().slice(0,16); this.name=n||('Guest'+Math.floor(Math.random()*900+100)); try{ localStorage.setItem('kzk_name',n); }catch(e){}
     let ws; try{ ws=new WebSocket(this.url); }catch(e){ return; } this.ws=ws; let opened=false;
     ws.onopen=()=>{ opened=true; ws.send(JSON.stringify({t:'join',name:this.name,look:MYLOOK})); };
     ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch(err){ return; } this.msg(m); };
-    ws.onclose=()=>{ const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
+    ws.onclose=()=>{ const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); if(this.micBtn) this.micBtn.style.display='none'; this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
       if(was){ UI.toast('Disconnected — reconnecting…'); setTimeout(()=>this.connect(),2500); } else if(!opened){ if(this.retry++<1) UI.toast('Online server not reachable — playing solo'); } };
     ws.onerror=()=>{}; },
   msg(m){
     switch(m.t){
-      case 'w': this.id=m.id; this.on=true; this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
+      case 'w': this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
       case 'j': this.info[m.id]={name:m.name,look:m.look}; this.total=m.total; UI.toast(m.name+' joined'); break;
       case 'l': { this.total=m.total; const r=this.remote.get(m.id); if(r){ this.drop(r); this.remote.delete(m.id); } delete this.info[m.id]; break; }
       case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
       case 'c': this.addChat(m.name,m.text,m.id===this.id); break;
+      case 'sig': this.onSig(m.from,m.d); break;
       case 'v': this.applyVeh([[m.vi,m.x,m.y,m.z,m.h,m.occ]]); break;
       case 'deny': if(Player.veh&&PVEH.indexOf(Player.veh)===m.vi){ Player.exit(Game.scene); UI.toast('Someone else is driving that'); } break;
     } },
@@ -2362,12 +2367,12 @@ const Net = {
     r={id,human,lab,x:0,y:0,z:0,h:0,tx:0,ty:0,tz:0,th:0,sp:0,og:1,vf:0,st:0,vi:-1,tvi:-1,seen:performance.now(),init:false,mounted:null}; this.remote.set(id,r); return r; },
   claim(r){ const v=PVEH[r.vi]; if(!v) return; const hs=r.human; v.remote=r.id; if(v.d.two){ v.g.add(hs.g); hs.g.position.set(0,v.type==='scooter'?-0.02:-0.06,v.type==='scooter'?-0.42:-0.36); hs.J.helmet.visible=true; r.mounted=v; } },
   release(r){ const hs=r.human; if(r.mounted){ r.mounted.g.remove(hs.g); Game.scene.add(hs.g); hs.J.helmet.visible=false; r.mounted=null; } const v=PVEH[r.vi]; if(v&&v.remote===r.id){ v.remote=null; v.vx=v.vz=v.vf=0; } hs.g.visible=true; r.vi=-1; },
-  drop(r){ this.release(r); Game.scene.remove(r.human.g); if(r.lab.parentNode) r.lab.parentNode.removeChild(r.lab); },
+  drop(r){ const pp=this.peers.get(r.id); if(pp) this.hangup(r.id,pp); this.release(r); Game.scene.remove(r.human.g); if(r.lab.parentNode) r.lab.parentNode.removeChild(r.lab); },
   clearRemotes(){ for(const r of this.remote.values()) this.drop(r); this.remote.clear(); this.info={}; },
   sendState(){ const ws=this.ws; if(!ws||ws.readyState!==1) return; const P=Player, v=P.veh, q=n=>Math.round(n*100)/100;
     const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:PVEH.indexOf(v),vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,vf:0,st:0};
     ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,vf:q(o.vf),st:q(o.st)})); },
-  update(dt){ if(!this.on) return; this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
+  update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
     const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
       r.x+=(r.tx-r.x)*k; r.y+=(r.ty-r.y)*k; r.z+=(r.tz-r.z)*k; r.h+=angDiff(r.h,r.th)*k;
@@ -2378,6 +2383,43 @@ const Net = {
       else { hs.g.visible=true; hs.g.position.set(r.x,r.y,r.z); hs.g.rotation.y=r.h; hs.animate(dt,false); }
       const d=Math.hypot(r.x-Player.x,r.z-Player.z); _nv.set(r.x,r.y+(v&&!v.d.two?(v.d.H+0.35):2.05),r.z).project(cam); const vis=_nv.z<1&&d<60&&Math.abs(_nv.x)<1.15&&Math.abs(_nv.y)<1.15;
       r.lab.style.display=vis?'block':'none'; if(vis){ r.lab.style.transform='translate(-50%,-100%) translate('+((_nv.x*0.5+0.5)*innerWidth)+'px,'+((-_nv.y*0.5+0.5)*innerHeight)+'px)'; r.lab.style.opacity=clamp(1.5-d/45,0.3,1); } } },
+  initAudio(){ if(this.actx) return; try{ this.actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
+  async toggleMic(){ if(!this.on) return; this.initAudio(); if(this.actx&&this.actx.state==='suspended') this.actx.resume();
+    if(!this.stream){ try{ this.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}}); }catch(e){ UI.toast('Microphone blocked — allow it in your browser settings'); this.setMic(false,true); return; }
+      this.track=this.stream.getAudioTracks()[0]; this.track.enabled=true; for(const p of this.peers.values()) if(p.sender) p.sender.replaceTrack(this.track).catch(()=>{});
+      try{ const src=this.actx.createMediaStreamSource(this.stream); this.myAn=this.actx.createAnalyser(); this.myAn.fftSize=256; src.connect(this.myAn); }catch(e){}
+      this.setMic(true); UI.toast('Mic on — people within 25 m can hear you'); }
+    else { this.track.enabled=!this.track.enabled; this.setMic(this.track.enabled); UI.toast(this.track.enabled?'Mic on':'Mic muted'); } },
+  setMic(on,denied){ this.micOn=on; const b=this.micBtn; if(!b) return; b.classList.toggle('on',on); b.classList.toggle('bad',!!denied); if(!on) b.classList.remove('talk'); b.textContent=on?'Mic on':(denied?'Blocked':'Mic off'); },
+  sig(to,d){ if(this.ws&&this.ws.readyState===1) this.ws.send(JSON.stringify({t:'sig',to,d})); },
+  makePeer(id){ const pc=new RTCPeerConnection({iceServers:this.ice||[{urls:'stun:stun.l.google.com:19302'}]}), p={pc,sender:null,pend:[],nodes:null,el:null,buf:null}; this.peers.set(id,p);
+    pc.onicecandidate=e=>{ if(e.candidate) this.sig(id,{type:'ice',c:e.candidate}); };
+    pc.ontrack=e=>this.attach(p,e.streams[0]||new MediaStream([e.track]));
+    pc.onconnectionstatechange=()=>{ if(pc.connectionState==='failed'||pc.connectionState==='closed') this.hangup(id,p); };
+    return p; },
+  hangup(id,p){ p=p||this.peers.get(id); if(!p) return; if(this.peers.get(id)===p) this.peers.delete(id); try{ p.pc.close(); }catch(e){}
+    if(p.nodes){ try{ p.nodes.src.disconnect(); p.nodes.gain.disconnect(); if(p.nodes.pan) p.nodes.pan.disconnect(); }catch(e){} } if(p.el){ try{ p.el.srcObject=null; }catch(e){} }
+    const r=this.remote.get(id); if(r) r.lab.classList.remove('talk'); },
+  async call(id){ if(this.peers.has(id)) return; const p=this.makePeer(id);
+    try{ const tr=p.pc.addTransceiver('audio',{direction:'sendrecv'}); p.sender=tr.sender; if(this.track) await tr.sender.replaceTrack(this.track); const o=await p.pc.createOffer(); await p.pc.setLocalDescription(o); this.sig(id,{type:'offer',sdp:o.sdp}); }catch(e){ this.hangup(id,p); } },
+  async onSig(from,d){ if(!d||typeof d.type!=='string') return; if(!this.actx) this.initAudio();
+    try{
+      if(d.type==='offer'){ const old=this.peers.get(from); if(old) this.hangup(from,old); const p=this.makePeer(from); await p.pc.setRemoteDescription({type:'offer',sdp:d.sdp});
+        const tr=p.pc.getTransceivers().find(t=>t.receiver&&t.receiver.track&&t.receiver.track.kind==='audio'); if(tr){ tr.direction='sendrecv'; p.sender=tr.sender; if(this.track) await tr.sender.replaceTrack(this.track); }
+        for(const c of p.pend.splice(0)) await p.pc.addIceCandidate(c).catch(()=>{}); const a=await p.pc.createAnswer(); await p.pc.setLocalDescription(a); this.sig(from,{type:'answer',sdp:a.sdp}); }
+      else if(d.type==='answer'){ const p=this.peers.get(from); if(p&&p.pc.signalingState==='have-local-offer'){ await p.pc.setRemoteDescription({type:'answer',sdp:d.sdp}); for(const c of p.pend.splice(0)) await p.pc.addIceCandidate(c).catch(()=>{}); } }
+      else if(d.type==='ice'){ const p=this.peers.get(from); if(!p||!d.c) return; if(p.pc.remoteDescription) await p.pc.addIceCandidate(d.c).catch(()=>{}); else p.pend.push(d.c); }
+    }catch(e){ const p=this.peers.get(from); if(p) this.hangup(from,p); } },
+  attach(p,stream){ if(p.nodes||!this.actx) return; const ac=this.actx; const el=new Audio(); el.srcObject=stream; el.muted=true; const pl=el.play&&el.play(); if(pl&&pl.catch) pl.catch(()=>{}); p.el=el;
+    const src=ac.createMediaStreamSource(stream), gain=ac.createGain(), pan=ac.createStereoPanner?ac.createStereoPanner():null, an=ac.createAnalyser(); an.fftSize=256; gain.gain.value=0; src.connect(an); src.connect(gain); if(pan){ gain.connect(pan); pan.connect(ac.destination); } else gain.connect(ac.destination);
+    p.nodes={src,gain,pan,an}; p.buf=new Uint8Array(an.fftSize); },
+  voiceUpdate(dt){ if(!this.actx) return; this.voiceT-=dt;
+    if(this.voiceT<=0){ this.voiceT=0.5; for(const [id,r] of this.remote){ const d=Math.hypot(r.x-Player.x,r.z-Player.z), p=this.peers.get(id); if(!p&&d<25&&this.peers.size<6&&Number(this.id)<Number(id)) this.call(id); else if(p&&d>35) this.hangup(id,p); } for(const [id,p] of [...this.peers]) if(!this.remote.has(id)) this.hangup(id,p); }
+    const yaw=Cam.yaw, rx=Math.cos(yaw), rz=-Math.sin(yaw), t=this.actx.currentTime; this.lvlT-=dt; const lv=this.lvlT<=0; if(lv) this.lvlT=0.12;
+    for(const [id,p] of this.peers){ const r=this.remote.get(id); if(!r||!p.nodes) continue; const dx=r.x-Player.x, dz=r.z-Player.z, d=Math.hypot(dx,dz); let vol=clamp(1-(d-3)/22,0,1); vol*=vol;
+      p.nodes.gain.gain.setTargetAtTime(vol,t,0.08); if(p.nodes.pan) p.nodes.pan.pan.setTargetAtTime(clamp((rx*dx+rz*dz)/Math.max(d,1),-1,1)*0.85,t,0.08);
+      if(lv){ p.nodes.an.getByteTimeDomainData(p.buf); let m=0; for(let i=0;i<p.buf.length;i++){ const v=Math.abs(p.buf[i]-128); if(v>m) m=v; } r.lab.classList.toggle('talk',m>6&&vol>0.02); } }
+    if(this.myAn&&lv&&this.micBtn){ const b=new Uint8Array(this.myAn.fftSize); this.myAn.getByteTimeDomainData(b); let m=0; for(let i=0;i<b.length;i++){ const v=Math.abs(b[i]-128); if(v>m) m=v; } this.micBtn.classList.toggle('talk',this.micOn&&m>6); } },
   openChat(){ if(!this.on||window.__typing) return; window.__typing=true; Input.k={}; this.chatIn.style.display='block'; this.log.classList.add('open'); this.chatIn.focus(); },
   closeChat(send){ const el=this.chatIn, t=el.value.trim(); if(send&&t&&this.ws&&this.ws.readyState===1) this.ws.send(JSON.stringify({t:'c',text:t.slice(0,140)})); el.value=''; el.style.display='none'; el.blur(); window.__typing=false; this.log.classList.remove('open'); const c=document.getElementById('c'); if(c) c.focus(); },
   addChat(name,text,self){ const d=document.createElement('div'); d.className='cm'+(self?' me':''); const b=document.createElement('b'); b.textContent=name+': '; d.appendChild(b); d.appendChild(document.createTextNode(text)); this.log.appendChild(d); while(this.log.children.length>8) this.log.removeChild(this.log.firstChild); setTimeout(()=>d.classList.add('old'),14000); },

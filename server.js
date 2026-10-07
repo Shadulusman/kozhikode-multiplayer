@@ -11,6 +11,10 @@ const CHAT_RADIUS = +process.env.CHAT_RADIUS || 30;   // metres: who can read a 
 const AOI = 350;                                       // metres: who you can see
 const TICK_MS = 100;                                   // snapshot rate (10 Hz)
 const PUB = path.join(__dirname, 'public');
+// Voice chat is peer-to-peer (WebRTC); this server only relays the handshake.
+// Add a TURN server (TURN_URL / TURN_USER / TURN_PASS) if players on strict mobile networks can't hear each other.
+const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+if (process.env.TURN_URL) ICE.push({ urls: process.env.TURN_URL.split(','), username: process.env.TURN_USER, credential: process.env.TURN_PASS });
 
 const server = http.createServer((req, res) => {
   const url = (req.url || '/').split('?')[0];
@@ -25,7 +29,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 2048 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16384 });
 const players = new Map();      // id -> player
 const vehicles = new Map();     // vehicle index -> {x,y,z,h,occ}
 let nextId = 1;
@@ -61,7 +65,7 @@ wss.on('connection', (ws) => {
       p = { id, ws, name: cleanName(m.name, id), look: cleanLook(m.look), x: 0, y: 0, z: 0, h: 0, sp: 0, og: 1, vi: -1, vf: 0, st: 0 };
       players.set(id, p);
       send(ws, {
-        t: 'w', id, total: players.size,
+        t: 'w', id, total: players.size, ice: ICE,
         players: [...players.values()].filter(q => q !== p).map(q => [q.id, q.name, q.look]),
         vehicles: [...vehicles.entries()].map(([vi, v]) => [vi, v.x, v.y, v.z, v.h, v.occ]),
       });
@@ -84,6 +88,12 @@ wss.on('connection', (ws) => {
         }
       }
       if (p.vi >= 0) { const v = vehicles.get(p.vi); v.x = x; v.y = y; v.z = z; v.h = h; }
+      return;
+    }
+
+    if (m.t === 'sig') {                       // voice handshake, only between nearby players
+      const q = players.get(String(m.to));
+      if (q && q !== p && m.d && typeof m.d === 'object' && Math.hypot(q.x - p.x, q.z - p.z) <= 60) send(q.ws, { t: 'sig', from: p.id, d: m.d });
       return;
     }
 
