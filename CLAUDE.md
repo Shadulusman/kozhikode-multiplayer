@@ -17,6 +17,7 @@
 - Client sends state ~12 Hz; server sends 10 Hz snapshots within 350 m.
 - Chat radius 30 m, voice connects within 25 m and hangs up past 35 m.
 - Shared seats: seat 0 = driver, others are passengers (bike/scooter 2, hatch/sedan/suv 4, auto-rickshaw 3, rest 1; see `seatCap`/`seatFor`/`freeSeat`). Client sends `sn` (seat) in state; server keeps `occ` = array of player ids per seat per vehicle, only seat 0 writes the vehicle pose, and replies `deny` if a seat is taken. If the driver leaves, a passenger is promoted to seat 0.
+- Travel (T menu) while driving moves the vehicle with everyone in it (`Game.teleport(...,carry)`); the server always sends you the players sharing your vehicle, even beyond 350 m, and clients snap (not glide) when a vehicle jumps >25 m. A denied seat makes the client try the next seat.
 - Vehicle glass is split into a transparent mesh (`splitGlass`) so seated people show through windows.
 - NPC traffic/peds are local per player (not synced). Vehicle poses are kept by the server.
 - Page must be opened from the server origin (or with `?server=wss://host/ws`). Mic needs HTTPS.

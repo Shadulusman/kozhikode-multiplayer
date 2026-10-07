@@ -2380,7 +2380,7 @@ const Net = {
       case 'c': this.addChat(m.name,m.text,m.id===this.id); break;
       case 'sig': this.onSig(m.from,m.d); break;
       case 'v': this.applyVeh([[m.vi,m.x,m.y,m.z,m.h,m.occ]]); break;
-      case 'deny': if(Player.veh&&PVEH.indexOf(Player.veh)===m.vi){ Player.exit(Game.scene); UI.toast('That seat is taken'); } break;
+      case 'deny': { const dv=Player.veh; if(dv&&PVEH.indexOf(dv)===m.vi&&Player.seat===m.sn){ if(m.sn+1<seatCap(dv)){ Player.seat=m.sn+1; dv.driver=false; if(!seatIn(dv,Player,Player.seat)) Player.g.visible=false; UI.toast('Riding as passenger'); } else { Player.exit(Game.scene); UI.toast('That vehicle is full'); } } break; }
     } },
   applyVeh(list){ for(const [vi,x,y,z,h,oc] of list||[]){ const v=PVEH[vi]; if(!v||v===Player.veh) continue; const occ=oc&&oc[0]; if(!occ||occ===this.id){ v.x=x; v.y=y; v.z=z; v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.remote=null; v.sync(); } else { v.remote=occ; } } },
   ensure(id){ let r=this.remote.get(id); if(r) return r; const inf=this.info[id], hh=buildHuman(inf.look||{}); const human={g:hh.root,J:hh.J,t:0,ph:Math.random()*6,air:0,speed:0,onGround:true,animate:Player.animate};
@@ -2396,6 +2396,7 @@ const Net = {
   update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
     const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
+      if(Math.hypot(r.tx-r.x,r.tz-r.z)>25){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; const pv=r.vi>=0?PVEH[r.vi]:null; if(pv&&pv===Player.veh&&r.sn===0){ pv.x=r.x; pv.y=r.y; pv.z=r.z; pv.h=r.h; Player.x=r.x; Player.y=r.y; Player.z=r.z; Player.h=r.h; Cam.snap(Player); Game.refreshWorld(r.x,r.z); } }
       r.x+=(r.tx-r.x)*k; r.y+=(r.ty-r.y)*k; r.z+=(r.tz-r.z)*k; r.h+=angDiff(r.h,r.th)*k;
       if(r.vi!==r.tvi||(r.vi>=0&&r.sn!==r.tsn)){ this.release(r); r.vi=r.tvi; if(r.vi>=0) this.claim(r); }
       const hs=r.human; hs.speed+=(r.sp-hs.speed)*k; hs.onGround=!!r.og; const v=r.vi>=0?PVEH[r.vi]:null;
@@ -2680,7 +2681,7 @@ const Input = { k:{}, hit:{}, locked:false, drag:false,
 })();
 const UI = { area:null, titleT:0, toastT:0, mapOn:true, frame:0,
   init(){ const $=id=>document.getElementById(id); this.$=$; this.map=$('map'); this.mg=this.map.getContext('2d');
-    const tv=$('travel-list'); TRAVEL.forEach((t,i)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=t[0]; b.addEventListener('click',()=>{ Game.teleport(t[1],t[2],t[3]); this.travel(false); }); tv.appendChild(b); });
+    const tv=$('travel-list'); TRAVEL.forEach((t,i)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=t[0]; b.addEventListener('click',()=>{ Game.teleport(t[1],t[2],t[3],false,true); this.travel(false); }); tv.appendChild(b); });
     $('start-btn').addEventListener('click',()=>Game.start()); $('travel-close').addEventListener('click',()=>this.travel(false)); },
   progress(f,txt){ this.$('load-bar').style.transform=`scaleX(${f})`; this.$('load-txt').textContent=txt; },
   ready(){ this.$('loading').hidden=true; this.$('start-btn').hidden=false; this.$('start-btn').focus(); },
@@ -2740,7 +2741,11 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     updateLOD(camera); UI.progress(1,''); UI.ready(); this.last=performance.now(); this.manual=location.search.indexOf('manual')>=0; window.__ready=true; if(this.manual) this.tick(0.03,true); else requestAnimationFrame(t=>this.loop(t));
   },
   start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); this.teleport(START.x,START.z,START.h,true); UI.area=null; document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); },
-  teleport(x,z,h,quiet){ if(Player.veh) Player.exit(this.scene); Player.x=x; Player.z=z; Player.y=groundY(x,z,3); Player.h=h; Player.vx=Player.vz=Player.vy=0; Player.g.position.set(x,Player.y,z); Player.g.rotation.y=h; Cam.snap(Player); Cam.pitch=0.2;
+  /** carry: a driver travels in their vehicle (passengers go along); anyone else, or carry=false, gets out first */
+  teleport(x,z,h,quiet,carry){ const v=Player.veh;
+    if(v&&carry&&Player.seat===0){ v.x=x; v.z=z; v.y=groundY(x,z,2); v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.sync(); Player.x=x; Player.z=z; Player.y=v.y; Player.h=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); return; }
+    if(v) Player.exit(this.scene); Player.x=x; Player.z=z; Player.y=groundY(x,z,3); Player.h=h; Player.vx=Player.vz=Player.vy=0; Player.g.position.set(x,Player.y,z); Player.g.rotation.y=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); },
+  refreshWorld(x,z,quiet){
     for(const v of Traffic.list){ v.act=false; v.mesh.visible=false; } Traffic.refreshCands(x,z); for(let i=0;i<500&&Traffic.count()<Traffic.target*0.9;i++) Traffic.spawn(x,z,this.camera,true); Peds.scan=0; if(!quiet) UI.fade(); },
   quality(){ this.q=((this.q||0)+1)%3; const r=this.renderer; if(this.q===0){ this.prMax=Math.min(devicePixelRatio||1,1.5); r.shadowMap.enabled=true; LOD.scale=1; Traffic.target=60; Peds.ambient=26; UI.toast('Graphics: high'); }
     else if(this.q===1){ this.prMax=1; LOD.scale=0.8; Traffic.target=46; Peds.ambient=18; UI.toast('Graphics: medium'); } else { this.prMax=0.8; r.shadowMap.enabled=false; LOD.scale=0.62; Traffic.target=34; Peds.ambient=12; UI.toast('Graphics: low'); }

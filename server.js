@@ -84,7 +84,7 @@ wss.on('connection', (ws) => {
         releaseVehicle(p);
         if (vi >= 0) {
           const v = vehicles.get(vi) || { x, y, z, h, occ: [] };
-          if (v.occ[sn] && v.occ[sn] !== p.id) { send(ws, { t: 'deny', vi }); }
+          if (v.occ[sn] && v.occ[sn] !== p.id) { send(ws, { t: 'deny', vi, sn }); }
           else { v.occ[sn] = p.id; vehicles.set(vi, v); p.vi = vi; p.sn = sn; }
         }
       }
@@ -125,7 +125,7 @@ setInterval(() => {
     for (const q of all) {
       if (q === p) continue;
       const dx = q.x - p.x, dz = q.z - p.z;
-      if (dx * dx + dz * dz < AOI * AOI) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st, q.sn]);
+      if (dx * dx + dz * dz < AOI * AOI || (p.vi >= 0 && q.vi === p.vi)) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st, q.sn]);
     }
     send(p.ws, { t: 'p', p: arr });
   }
