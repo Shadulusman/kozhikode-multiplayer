@@ -31,7 +31,7 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16384 });
 const players = new Map();      // id -> player
-const vehicles = new Map();     // vehicle index -> {x,y,z,h,occ}
+const vehicles = new Map();     // vehicle index -> {x,y,z,h,occ:[playerId|null per seat]}; seat 0 = driver (owns the pose)
 let nextId = 1;
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -44,8 +44,8 @@ const cleanLook = (l) => { l = l || {}; return { shirt: HEX.test(l.shirt) ? l.sh
 function releaseVehicle(p) {
   if (p.vi < 0) return;
   const v = vehicles.get(p.vi);
-  if (v && v.occ === p.id) { v.occ = null; broadcast({ t: 'v', vi: p.vi, x: v.x, y: v.y, z: v.z, h: v.h, occ: null }); }
-  p.vi = -1;
+  if (v && v.occ[p.sn] === p.id) { v.occ[p.sn] = null; broadcast({ t: 'v', vi: p.vi, x: v.x, y: v.y, z: v.z, h: v.h, occ: v.occ }); }
+  p.vi = -1; p.sn = 0;
 }
 
 wss.on('connection', (ws) => {
@@ -62,7 +62,7 @@ wss.on('connection', (ws) => {
       if (p) return;
       if (players.size >= MAX_PLAYERS) { send(ws, { t: 'full' }); return ws.close(); }
       const id = String(nextId++);
-      p = { id, ws, name: cleanName(m.name, id), look: cleanLook(m.look), x: 0, y: 0, z: 0, h: 0, sp: 0, og: 1, vi: -1, vf: 0, st: 0 };
+      p = { id, ws, name: cleanName(m.name, id), look: cleanLook(m.look), x: 0, y: 0, z: 0, h: 0, sp: 0, og: 1, vi: -1, sn: 0, vf: 0, st: 0 };
       players.set(id, p);
       send(ws, {
         t: 'w', id, total: players.size, ice: ICE,
@@ -79,15 +79,16 @@ wss.on('connection', (ws) => {
       if (x === null || y === null || z === null || h === null) return;
       p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0;
       const vi = Number.isInteger(m.vi) && m.vi >= 0 && m.vi < 500 ? m.vi : -1;
-      if (vi !== p.vi) {
+      const sn = Number.isInteger(m.sn) && m.sn >= 0 && m.sn < 8 ? m.sn : 0;
+      if (vi !== p.vi || (vi >= 0 && sn !== p.sn)) {
         releaseVehicle(p);
         if (vi >= 0) {
-          const v = vehicles.get(vi) || { x, y, z, h, occ: null };
-          if (v.occ && v.occ !== p.id) { send(ws, { t: 'deny', vi }); }
-          else { v.occ = p.id; vehicles.set(vi, v); p.vi = vi; }
+          const v = vehicles.get(vi) || { x, y, z, h, occ: [] };
+          if (v.occ[sn] && v.occ[sn] !== p.id) { send(ws, { t: 'deny', vi }); }
+          else { v.occ[sn] = p.id; vehicles.set(vi, v); p.vi = vi; p.sn = sn; }
         }
       }
-      if (p.vi >= 0) { const v = vehicles.get(p.vi); v.x = x; v.y = y; v.z = z; v.h = h; }
+      if (p.vi >= 0 && p.sn === 0) { const v = vehicles.get(p.vi); v.x = x; v.y = y; v.z = z; v.h = h; }
       return;
     }
 
@@ -124,7 +125,7 @@ setInterval(() => {
     for (const q of all) {
       if (q === p) continue;
       const dx = q.x - p.x, dz = q.z - p.z;
-      if (dx * dx + dz * dz < AOI * AOI) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st]);
+      if (dx * dx + dz * dz < AOI * AOI) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st, q.sn]);
     }
     send(p.ws, { t: 'p', p: arr });
   }
