@@ -2039,12 +2039,26 @@ function vehGeo(type,colorHex,noWheels){
   g=b.build(); _vgCache.set(key,g); return g;
 }
 
+/* glass is baked into the body geometry with a marker colour; PVehicle splits it into a see-through mesh so drivers show */
+const _gsplit=new WeakMap();
+function splitGlass(g){ let r=_gsplit.get(g); if(r) return r; const gc=C('#18222b'), col=g.attributes.color.array, idx=g.index.array, bi=[], gi=[];
+  for(let i=0;i<idx.length;i+=3){ const a=idx[i]*3, isG=Math.abs(col[a]-gc[0])<1e-4&&Math.abs(col[a+1]-gc[1])<1e-4&&Math.abs(col[a+2]-gc[2])<1e-4; (isG?gi:bi).push(idx[i],idx[i+1],idx[i+2]); }
+  const body=new THREE.BufferGeometry(), glass=new THREE.BufferGeometry(); for(const n in g.attributes){ body.setAttribute(n,g.attributes[n]); glass.setAttribute(n,g.attributes[n]); }
+  body.setIndex(bi); glass.setIndex(gi); body.computeBoundingSphere(); glass.computeBoundingSphere(); r={body,glass,hasGlass:gi.length>0}; _gsplit.set(g,r); return r; }
+/** seated driver position [x,y,z] inside a vehicle (right-hand drive); null = no visible driver */
+function seatFor(v){ const t=v.type, d=v.d; if(d.two||t==='auto'||t==='goods') return null;
+  if(t.startsWith('bus')) return [-0.75,0.42,d.L/2-1.15];
+  if(t==='truck') return [-0.45,0.5,1.75];
+  return [-d.W*0.24,t==='suv'||t==='van'||t==='ambulance'?-0.02:-0.24,t==='van'?0.55:(t==='ambulance'?0.8:0.15)]; }
+function seatDriver(v,hs){ const s=seatFor(v); if(!s) return false; v.g.add(hs.g); hs.g.position.set(s[0],s[1],s[2]); hs.g.rotation.set(0,0,0); hs.g.visible=true; hs.J.helmet.visible=false; hs.animate(0.016,true); return true; }
+
 /* ---------------- player-drivable vehicle ---------------- */
 const PVEH=[];
 class PVehicle {
   constructor(type,x,z,h,color){ this.type=type; this.color=color; this.remote=null; this.d=VEH[type]; this.x=x; this.z=z; this.y=groundY(x,z,2); this.h=h; this.vx=0; this.vz=0; this.vf=0; this.steer=0; this.pitch=0; this.roll=0; this.spin=0; this.driver=false; this.braking=false; this.impact=0;
     const gt=type==='bus'?'bus':type; this.g=new THREE.Group(); this.g.rotation.order='YXZ';
-    this.body=new THREE.Mesh(vehGeo(gt,color,true),MAT.veh); this.body.castShadow=true; this.g.add(this.body);
+    const full=vehGeo(gt,color,true), sp=splitGlass(full); this.body=new THREE.Mesh(sp.hasGlass?sp.body:full,MAT.veh); this.body.castShadow=true; this.g.add(this.body);
+    if(sp.hasGlass){ if(!MAT.vglass) MAT.vglass=new THREE.MeshStandardMaterial({vertexColors:true,transparent:true,opacity:0.3,roughness:0.08,metalness:0.4,depthWrite:false,side:THREE.DoubleSide}); const gm=new THREE.Mesh(sp.glass,MAT.vglass); gm.renderOrder=2; this.g.add(gm); }
     if(type==='bus'){ const s=new THREE.Mesh(busSignGeo('busK',SIGN_BUS_KKD),MAT.sign); this.g.add(s); }
     this.wheels=[]; const ww=type==='bus'?0.3:(this.d.two?0.11:(this.d.three?0.14:0.22));
     wheelPos(type).forEach((p,i)=>{ const piv=new THREE.Group(); piv.position.set(p[0],this.d.wr,p[1]); const m=new THREE.Mesh(wheelGeo(this.d.wr,ww),MAT.veh); m.castShadow=true; piv.add(m); this.g.add(piv); this.wheels.push({piv,m,front:p[1]>0}); });
@@ -2365,7 +2379,7 @@ const Net = {
   ensure(id){ let r=this.remote.get(id); if(r) return r; const inf=this.info[id], hh=buildHuman(inf.look||{}); const human={g:hh.root,J:hh.J,t:0,ph:Math.random()*6,air:0,speed:0,onGround:true,animate:Player.animate};
     Game.scene.add(hh.root); const lab=document.createElement('div'); lab.className='nm'; lab.textContent=inf.name; document.getElementById('hud').appendChild(lab);
     r={id,human,lab,x:0,y:0,z:0,h:0,tx:0,ty:0,tz:0,th:0,sp:0,og:1,vf:0,st:0,vi:-1,tvi:-1,seen:performance.now(),init:false,mounted:null}; this.remote.set(id,r); return r; },
-  claim(r){ const v=PVEH[r.vi]; if(!v) return; const hs=r.human; v.remote=r.id; if(v.d.two){ v.g.add(hs.g); hs.g.position.set(0,v.type==='scooter'?-0.02:-0.06,v.type==='scooter'?-0.42:-0.36); hs.J.helmet.visible=true; r.mounted=v; } },
+  claim(r){ const v=PVEH[r.vi]; if(!v) return; const hs=r.human; v.remote=r.id; if(v.d.two){ v.g.add(hs.g); hs.g.position.set(0,v.type==='scooter'?-0.02:-0.06,v.type==='scooter'?-0.42:-0.36); hs.J.helmet.visible=true; r.mounted=v; } else if(seatDriver(v,hs)) r.mounted=v; },
   release(r){ const hs=r.human; if(r.mounted){ r.mounted.g.remove(hs.g); Game.scene.add(hs.g); hs.J.helmet.visible=false; r.mounted=null; } const v=PVEH[r.vi]; if(v&&v.remote===r.id){ v.remote=null; v.vx=v.vz=v.vf=0; } hs.g.visible=true; r.vi=-1; },
   drop(r){ const pp=this.peers.get(r.id); if(pp) this.hangup(r.id,pp); this.release(r); Game.scene.remove(r.human.g); if(r.lab.parentNode) r.lab.parentNode.removeChild(r.lab); },
   clearRemotes(){ for(const r of this.remote.values()) this.drop(r); this.remote.clear(); this.info={}; },
@@ -2379,7 +2393,7 @@ const Net = {
       if(r.vi!==r.tvi){ this.release(r); r.vi=r.tvi; if(r.vi>=0) this.claim(r); }
       const hs=r.human; hs.speed+=(r.sp-hs.speed)*k; hs.onGround=!!r.og; const v=r.vi>=0?PVEH[r.vi]:null;
       if(v){ v.remote=r.id; v.x=r.x; v.y=r.y; v.z=r.z; v.h=r.h; v.vx=v.vz=0; v.vf=r.vf; v.steer=r.st; v.pitch=0; v.roll=0; v.spin+=r.vf/v.d.wr*dt; for(const w of v.wheels){ w.m.rotation.x=v.spin; if(w.front) w.piv.rotation.y=v.steer; } v.sync();
-        if(v.d.two){ hs.g.visible=true; hs.g.rotation.y=0; hs.animate(dt,true); } else hs.g.visible=false; }
+        if(r.mounted){ hs.g.visible=true; hs.animate(dt,true); } else hs.g.visible=false; }
       else { hs.g.visible=true; hs.g.position.set(r.x,r.y,r.z); hs.g.rotation.y=r.h; hs.animate(dt,false); }
       const d=Math.hypot(r.x-Player.x,r.z-Player.z); _nv.set(r.x,r.y+(v&&!v.d.two?(v.d.H+0.35):2.05),r.z).project(cam); const vis=_nv.z<1&&d<60&&Math.abs(_nv.x)<1.15&&Math.abs(_nv.y)<1.15;
       r.lab.style.display=vis?'block':'none'; if(vis){ r.lab.style.transform='translate(-50%,-100%) translate('+((_nv.x*0.5+0.5)*innerWidth)+'px,'+((-_nv.y*0.5+0.5)*innerHeight)+'px)'; r.lab.style.opacity=clamp(1.5-d/45,0.3,1); } } },
@@ -2442,7 +2456,7 @@ const Player = {
   },
   pushFrom(cx,cz,cr){ const dx=this.x-cx, dz=this.z-cz, rr=cr+0.34, d2=dx*dx+dz*dz; if(d2<rr*rr&&d2>1e-6){ const d=Math.sqrt(d2); this.x+=dx/d*(rr-d); this.z+=dz/d*(rr-d); } },
   update(dt,inp,yaw){
-    if(this.veh){ const v=this.veh; this.x=v.x; this.y=v.y; this.z=v.z; this.h=v.h; this.speed=0; this.onGround=true; if(v.d.two) this.animate(dt,true); return; }
+    if(this.veh){ const v=this.veh; this.x=v.x; this.y=v.y; this.z=v.z; this.h=v.h; this.speed=0; this.onGround=true; if(v.d.two||this.g.parent===v.g) this.animate(dt,true); return; }
     const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
     let mx=fx*inp.fwd+rx*inp.right, mz=fz*inp.fwd+rz*inp.right; const ml=Math.hypot(mx,mz); if(ml>1){ mx/=ml; mz/=ml; }
     const top=inp.run?6.6:3.3, k=this.onGround?11:2.2; this.vx=damp(this.vx,mx*top,k,dt); this.vz=damp(this.vz,mz*top,k,dt);
@@ -2459,10 +2473,10 @@ const Player = {
   },
   nearestVehicle(){ let best=null,bd=4.2; for(const v of PVEH){ if(v.remote||Math.abs(v.y-this.y)>1.6) continue; const dx=this.x-v.x, dz=this.z-v.z, fx=Math.sin(v.h), fz=Math.cos(v.h); const al=clamp(dx*fx+dz*fz,-v.d.L/2,v.d.L/2); const d=Math.hypot(dx-fx*al,dz-fz*al)-v.d.W/2; if(d<bd-1.6&&d<(best?bd:9)){ bd=d+1.6; best=v; } } return best; },
   enter(v,scene){ this.veh=v; v.driver=true; this.vx=this.vz=this.vy=0;
-    if(v.d.two){ v.g.add(this.g); this.g.position.set(0,v.type==='scooter'?-0.02:-0.06,v.type==='scooter'?-0.42:-0.36); this.g.rotation.y=0; this.g.visible=true; this.J.helmet.visible=true; } else this.g.visible=false; },
+    if(v.d.two){ v.g.add(this.g); this.g.position.set(0,v.type==='scooter'?-0.02:-0.06,v.type==='scooter'?-0.42:-0.36); this.g.rotation.y=0; this.g.visible=true; this.J.helmet.visible=true; } else if(seatDriver(v,this)) this.animate(0,true); else this.g.visible=false; },
   exit(scene){ const v=this.veh; if(!v) return; const fx=Math.sin(v.h), fz=Math.cos(v.h), rx=-fz, rz=fx, w=v.d.W/2+0.75; const opts=[[rx*w,rz*w],[-rx*w,-rz*w],[-fx*(v.d.L/2+0.9),-fz*(v.d.L/2+0.9)],[fx*(v.d.L/2+0.9),fz*(v.d.L/2+0.9)]]; let px=v.x+opts[0][0], pz=v.z+opts[0][1];
     for(const o of opts){ _pc.x=v.x+o[0]; _pc.z=v.z+o[1]; const bx=_pc.x, bz=_pc.z; resolveCircle(_pc,0.36,v.y,1.7); if(Math.hypot(_pc.x-bx,_pc.z-bz)<0.05&&walkable(bx,bz,v.y+0.4)){ px=bx; pz=bz; break; } }
-    if(v.d.two){ scene.add(this.g); } this.J.helmet.visible=false; this.g.visible=true; v.driver=false; this.veh=null; this.x=px; this.z=pz; this.y=groundY(px,pz,v.y+0.5); this.h=v.h; this.vx=this.vz=this.vy=0; this.g.position.set(this.x,this.y,this.z); this.g.rotation.y=this.h; },
+    if(v.d.two||this.g.parent===v.g){ scene.add(this.g); } this.J.helmet.visible=false; this.g.visible=true; v.driver=false; this.veh=null; this.x=px; this.z=pz; this.y=groundY(px,pz,v.y+0.5); this.h=v.h; this.vx=this.vz=this.vy=0; this.g.position.set(this.x,this.y,this.z); this.g.rotation.y=this.h; },
 };
 
 const Cam = { yaw:PI/2, pitch:0.2, dist:5.2, cd:5.2, tx:START.x, ty:1.5, tz:START.z, last:-10, shake:0, fov:60, t:0,
