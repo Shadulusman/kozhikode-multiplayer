@@ -540,6 +540,41 @@ function signMat(lines, o={}){
   return m;
 }
 
+
+/* ---------- photo-scanned ground surfaces (CC0, ambientCG, see public/assets/CREDITS.md) ----------
+   Mapped in world space (tile metres), sampled twice at different scale/rotation and blended with macro noise so
+   repetition doesn't show; brightness varies over tens of metres; uWet adds puddles in patches; sand gets a wet band near the sea. */
+const GROUND_U={uWet:{value:0}}; let LITE_TEX=false;
+function photoSet(name){ const ld=new THREE.TextureLoader(), mk=(f,srgb)=>{ const t=ld.load('assets/tex/'+name+'_'+f+'.jpg'); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=8; if(srgb) t.encoding=THREE.sRGBEncoding; return t; };
+  return LITE_TEX?{map:mk('col',true)}:{map:mk('col',true),normalMap:mk('nrm',false),roughnessMap:mk('rgh',false)}; }
+function groundPBR(m,set,tile,o){ o=o||{}; Object.assign(m,set); if(set.normalMap) m.normalScale=new THREE.Vector2(o.ns||0.8,o.ns||0.8); m.roughness=o.rough||1; m.metalness=0; m.needsUpdate=true;
+  m.userData.ground={tile,shore:!!o.shore,base:m.roughness};
+  m.onBeforeCompile=sh=>{ sh.uniforms.uWet=GROUND_U.uWet; sh.uniforms.uTile={value:tile}; if(o.shore) sh.uniforms.uShoreX=Env.seaU.uShoreX;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWP;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec3 vWP; uniform float uWet,uTile; ${o.shore?'uniform float uShoreX;':''}
+float gH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float gN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(gH(i),gH(i+vec2(1,0)),f.x),mix(gH(i+vec2(0,1)),gH(i+vec2(1,1)),f.x),f.y); }
+vec2 gUA,gUB; float gB,gMac,gPud;
+vec4 gS(sampler2D t){ return mix(texture2D(t,gUA),texture2D(t,gUB),gB); }`)
+    .replace('#include <map_fragment>',`vec2 wp=vWP.xz; gUA=wp/uTile; gUB=mat2(0.8,-0.6,0.6,0.8)*wp/(uTile*1.37)+vec2(0.31,0.57);
+gB=smoothstep(0.35,0.65,gN(wp/17.0)); gMac=mix(0.82,1.08,gN(wp/41.0)*0.6+gN(wp/9.0)*0.4);
+gPud=smoothstep(0.62,0.7,gN(wp/6.5)*0.7+gN(wp/2.1)*0.3)*uWet;
+#ifdef USE_MAP
+  vec4 texelColor=mapTexelToLinear(gS(map)); diffuseColor*=texelColor;
+#endif
+diffuseColor.rgb*=gMac*mix(1.0,0.72,uWet*0.6)*(1.0-gPud*0.25);
+${o.shore?'float gShore=smoothstep(uShoreX+9.0,uShoreX+1.5,vWP.x+gN(wp/3.0)*2.0); diffuseColor.rgb*=mix(1.0,0.62,gShore);':''}`)
+    .replace('#include <roughnessmap_fragment>',`float roughnessFactor=roughness;
+#ifdef USE_ROUGHNESSMAP
+  roughnessFactor*=mix(0.72,1.0,gS(roughnessMap).g); // photo maps are too glossy for sun-baked Kerala ground
+#endif
+roughnessFactor=mix(roughnessFactor,roughnessFactor*0.78,uWet); roughnessFactor=mix(roughnessFactor,0.06,gPud);
+${o.shore?'roughnessFactor=mix(roughnessFactor,0.35,gShore);':''}`)
+    .replace('#include <normal_fragment_maps>',`#ifdef USE_NORMALMAP
+  vec3 mapN=gS(normalMap).xyz*2.0-1.0; mapN.xy*=normalScale*(1.0-gPud);
+  normal=normalize((viewMatrix*vec4(normalize(vec3(mapN.x,mapN.z,-mapN.y)),0.0)).xyz);
+#endif`); }; return m; }
 function buildTextures(){
   TEX.asphalt=texAsphalt(); TEX.wet=texWetMap(); TEX.ground=texGround(); TEX.paver=texPaver(); TEX.cobble=texCobble(); TEX.laterite=texLaterite();
   TEX.tile=texTile(); TEX.tin=texTin(); TEX.curb=texCurb(); TEX.concrete=texConcrete(); TEX.sand=texSand(); TEX.leaf=texLeaf();
@@ -567,6 +602,9 @@ function buildTextures(){
   MAT.sandDecal=decal({map:TEX.sand,vertexColors:true},-9.6);
   MAT.road=decal({map:TEX.asphalt,vertexColors:true,roughness:0.9,roughnessMap:TEX.wet,envMapIntensity:0.6},-9);
   MAT.deck=new THREE.MeshStandardMaterial({map:TEX.asphalt,vertexColors:true,roughness:0.9,roughnessMap:TEX.wet,envMapIntensity:0.6});
+  { LITE_TEX=Game.QUALITY[Game.autoQuality()].sh===0; const asph=photoSet('asphalt'), pav=photoSet('pavers'), snd=photoSet('sand');
+    groundPBR(MAT.road,asph,3.2,{ns:0.9}); groundPBR(MAT.deck,asph,3.2,{ns:0.9}); groundPBR(MAT.paver,pav,1.6,{ns:1}); MAT.road.color.set('#b4b8c0'); MAT.deck.color.set('#b4b8c0'); MAT.paver.color.set('#c98a76'); groundPBR(MAT.sandDecal,snd,3.5,{ns:0.7,shore:true});
+    MAT.paverSolid=groundPBR(new THREE.MeshStandardMaterial({vertexColors:true,envMapIntensity:0.2,color:0xc98a76}),pav,1.6,{ns:1}); }
   MAT.mark=decal({vertexColors:true,roughness:0.8},-8);
   MAT.deckMark=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6});
   MAT.pond=new THREE.MeshStandardMaterial({color:0x3f6b55,roughness:0.08,metalness:0.2,normalMap:TEX.waterN,normalScale:new THREE.Vector2(0.35,0.35),envMapIntensity:1.6,depthTest:false,depthWrite:false});
@@ -2603,8 +2641,7 @@ const Env = { cur:null, tgt:null, sunDir:new V3(), time:0, wet:0.18, envT:0,
     this.scene.fog.color.copy(U.uFog.value); this.scene.fog.near=L('fn'); this.scene.fog.far=L('ff');
     const S=this.seaU; S.uSunDir.value.copy(this.sunDir); S.uSun.value.copy(this.sun.color).multiplyScalar(this.sun.intensity*0.5); S.uZen.value.copy(U.uZen.value); S.uHor.value.copy(U.uHor.value); S.uLight.value=clamp(0.35+this.sun.intensity*0.25+this.hemi.intensity*0.2,0.4,1.15);
     this.hillMat.color.copy(U.uFog.value).lerp(lin('#3f5a52'),0.3);
-    this.wet=L('wet'); const w=this.wet; for(const m of [MAT.road,MAT.deck]){ m.roughness=lerp(0.95,0.3,w); m.envMapIntensity=lerp(0.35,1.5,w); const k=lerp(1,0.7,w); m.color.setRGB(k,k,k*1.02); }
-    MAT.paver.roughness=lerp(0.95,0.5,w); this.rainA=L('rain'); this.rain.visible=this.rainA>0.02; this.rainU.uA.value=this.rainA; this.renderer.toneMappingExposure=L('exp');
+    this.wet=L('wet'); const w=this.wet; GROUND_U.uWet.value=clamp((w-0.2)/0.8,0,1); for(const m of [MAT.road,MAT.deck,MAT.paver,MAT.paverSolid]) m.envMapIntensity=lerp(0.3,0.85,w); this.rainA=L('rain'); this.rain.visible=this.rainA>0.02; this.rainU.uA.value=this.rainA; this.renderer.toneMappingExposure=L('exp');
     Object.assign(this.cur,{el:L('el'),az:L('az'),sunI:L('sunI'),hemiI:L('hemiI'),fn:L('fn'),ff:L('ff'),cover:L('cover'),wet:w,rain:this.rainA,exp:L('exp')});
     if(t>=1) this.cur=Object.assign({},this.tgt);
   },
