@@ -18,15 +18,21 @@ const SPOTS = [
   { id: 'shawaya', kind: 'food', name: 'Beach Shawaya', ml: 'ബീച്ച് ഷവായ', at: 'beach', dx: 10, dz: 12 },
   { id: 'autostand', kind: 'auto', name: 'Railway Pre-paid Auto Stand', ml: 'പ്രീ-പെയ്ഡ് ഓട്ടോ', at: 'railway', dx: -12, dz: 12 },
   { id: 'scooters', kind: 'dealer', name: 'Calicut Two Wheelers', ml: 'കാലിക്കറ്റ് ടൂ വീലേഴ്സ്', at: 'railway', dx: 10, dz: -10 },
+  { id: 'cars', kind: 'dealer', name: 'Malabar Used Cars', ml: 'മലബാർ യൂസ്ഡ് കാർസ്', at: 'hilite', dx: -22, dz: -26 },
   { id: 'cloth', kind: 'cloth', name: 'Kasavu Textiles', ml: 'കസവ് ടെക്സ്റ്റൈൽസ്', at: 'smstreet', dx: 8, dz: 8 },
 ].map((s) => ({ ...s, x: PLACES[s.at].x + s.dx, z: PLACES[s.at].z + s.dz }));
 const SPOT = Object.fromEntries(SPOTS.map((s) => [s.id, s]));
 
 const CATALOG = {
   // vehicles (type = client VEH type). Prices tuned so the first scooter takes ~10 deliveries.
-  city125: { kind: 'vehicle', name: 'City 125 scooter', type: 'scooter', price: 6000, color: '#c62828', shop: 'scooters' },
-  breeze: { kind: 'vehicle', name: 'Breeze scooter', type: 'scooter', price: 9500, color: '#1565c0', shop: 'scooters' },
-  thunder150: { kind: 'vehicle', name: 'Thunder 150 bike', type: 'bike', price: 18000, color: '#212121', shop: 'scooters' },
+  city125: { kind: 'vehicle', name: 'City 125 scooter', type: 'scooter', price: 6000, color: '#c62828', shop: 'scooters', stats: [2, 2, 4, 3] },
+  breeze: { kind: 'vehicle', name: 'Breeze scooter', type: 'scooter', price: 9500, color: '#1565c0', shop: 'scooters', stats: [3, 3, 4, 3] },
+  thunder150: { kind: 'vehicle', name: 'Thunder 150 bike', type: 'bike', price: 18000, color: '#212121', shop: 'scooters', stats: [4, 4, 3, 4] },
+  // used cars (prices: a first car is several hours of jobs; ~₹10k/hour from deliveries/fares)
+  maruti_old: { kind: 'vehicle', name: 'Old Hatch 800', type: 'hatch', price: 35000, color: '#b71c1c', shop: 'cars', stats: [2, 2, 3, 3] },
+  urban_x1: { kind: 'vehicle', name: 'Urban X1 sedan', type: 'sedan', price: 75000, color: '#0d47a1', shop: 'cars', stats: [3, 3, 4, 3] },
+  sporty_gt: { kind: 'vehicle', name: 'Sporty GT', type: 'sedan', price: 120000, color: '#f5f5f5', shop: 'cars', stats: [4, 4, 4, 4] },
+  ranger_suv: { kind: 'vehicle', name: 'Ranger SUV', type: 'suv', price: 140000, color: '#212121', shop: 'cars', stats: [3, 3, 3, 4] },
   // clothes: outfit style (o) + colours
   tee_white: { kind: 'cloth', name: 'White T-shirt', price: 350, look: { o: 0, shirt: '#f5f5f5' }, shop: 'cloth' },
   shirt_black: { kind: 'cloth', name: 'Black shirt', price: 850, look: { o: 1, shirt: '#151515' }, shop: 'cloth' },
@@ -37,9 +43,12 @@ const CATALOG = {
 };
 const FOODS = ['Kozhikode biriyani', 'Chicken biriyani', 'Porotta + beef', 'Pathiri + chicken curry', 'Shawaya', 'Tea + snacks', 'Kozhikode halwa', 'Fresh juice'];
 
+/** fictional Kerala-style registration (KL 11 = Kozhikode district code style), stable per owner+vehicle */
+function plate(uid, item) { let h = 2166136261; for (const ch of String(uid) + ':' + item) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  const L = 'ABCDEFGHJKLMNPRSTUVWXYZ'; return 'KL 11 ' + L[h % 23] + L[(h >>> 5) % 23] + ' ' + String(1000 + (h >>> 10) % 9000); }
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const xpLevel = (xp) => Math.floor(Math.sqrt(xp / 100)) + 1;
-const R_SPOT = 9, R_DROP = 10, MAX_JUMP = 80, MAX_SPEED = 45;
+const GARAGE_SLOTS = 3, R_SPOT = 9, R_DROP = 10, MAX_JUMP = 80, MAX_SPEED = 45;
 
 function createEconomy({ store, send, broadcast, log = console.log }) {
   const pvSlots = new Map();   // vid -> {vid, owner p, type, color}
@@ -84,7 +93,7 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
 
   function despawnPV(p) { for (const [vid, v] of pvSlots) if (v.owner === p) { pvSlots.delete(vid); broadcast({ t: 'pv', vid, gone: 1 }); } }
   function detach(p) { despawnPV(p); }
-  const pvList = () => [...pvSlots.values()].map((v) => ({ vid: v.vid, type: v.type, color: v.color, x: v.x, z: v.z, h: v.h, owner: v.owner.id }));
+  const pvList = () => [...pvSlots.values()].map((v) => ({ vid: v.vid, type: v.type, color: v.color, plate: v.plate, x: v.x, z: v.z, h: v.h, owner: v.owner.id }));
   const pvOwner = (vid) => { const v = pvSlots.get(vid); return v ? v.owner : null; };
 
   /** called on every position update: teleport check + objective progress */
@@ -124,6 +133,7 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
     if (m.k === 'buy') {
       const it = CATALOG[m.item]; if (!it) return;
       if (!near(it.shop)) return send(p.ws, { t: 'eco', k: 'err', text: 'Visit ' + SPOT[it.shop].name + ' to buy this' });
+      if (it.kind === 'vehicle') { const vs = (await store.owned(e.uid)).filter((o) => o.kind === 'vehicle').length; if (vs >= GARAGE_SLOTS) return send(p.ws, { t: 'eco', k: 'err', text: 'Your garage is full (' + GARAGE_SLOTS + ' vehicles)' }); }
       if (e.busy) return; e.busy = true;
       try { const r = await store.buy(e.uid, it.kind, m.item, it.price, it.kind === 'vehicle' ? { color: it.color } : {});
         if (!r.ok) return send(p.ws, { t: 'eco', k: 'err', text: r.why === 'owned' ? 'You already own this' : 'Not enough money — you need ₹' + it.price.toLocaleString('en-IN') });
@@ -141,8 +151,8 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
       const owned = await store.owned(e.uid); if (!owned.some((o) => o.item === m.item)) return send(p.ws, { t: 'eco', k: 'err', text: 'You do not own that vehicle' });
       if (p.vi >= 0) return send(p.ws, { t: 'eco', k: 'err', text: 'Get out of your vehicle first' });
       despawnPV(p); const vid = nextSlot(); if (vid < 0) return;
-      const h = Number.isFinite(m.h) ? m.h : 0, v = { vid, owner: p, type: it.type, color: it.color, x: p.x + Math.cos(h) * 2.2, z: p.z - Math.sin(h) * 2.2, h };
-      pvSlots.set(vid, v); broadcast({ t: 'pv', vid, type: v.type, color: v.color, x: v.x, z: v.z, h: v.h, owner: p.id }); return;
+      const h = Number.isFinite(m.h) ? m.h : 0, v = { vid, owner: p, type: it.type, color: it.color, plate: plate(e.uid, m.item), x: p.x + Math.cos(h) * 2.2, z: p.z - Math.sin(h) * 2.2, h };
+      pvSlots.set(vid, v); broadcast({ t: 'pv', vid, type: v.type, color: v.color, plate: v.plate, x: v.x, z: v.z, h: v.h, owner: p.id }); return;
     }
     if (m.k === 'txs') return send(p.ws, { t: 'eco', k: 'txs', list: await store.txs(e.uid, 12) });
   }
