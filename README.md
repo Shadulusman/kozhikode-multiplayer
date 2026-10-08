@@ -23,8 +23,26 @@ Open http://localhost:3000 in two browser tabs and press start in both.
 ## Notes
 - Traffic and pedestrians (NPCs) are local to each player; only real people are synced.
 - The page must be opened from this server's address (same origin). To point a page hosted elsewhere at a server, open it with `?server=wss://your-server.example.com/ws`.
-- Voice: tap the Mic button (or press B). It is peer-to-peer (WebRTC); the server only relays the handshake. Volume fades with distance and pans left/right. Needs HTTPS (Render provides it). Use headphones to avoid echo. If players on strict mobile networks can't hear each other, add a TURN server via the env vars `TURN_URL`, `TURN_USER`, `TURN_PASS`.
-- Not included yet: full accounts/passwords, moderation tools. Names are plain text and messages are length-limited and rate-limited.
+- Voice: tap the Mic button (or press B). It is peer-to-peer (WebRTC); the server only relays the handshake. Volume fades with distance and pans left/right. Needs HTTPS (Render provides it). Use headphones to avoid echo. If players on strict mobile networks can't hear each other, add a TURN server — see *Voice on strict networks* below.
+- Not included yet: full accounts/passwords. Moderation: People panel (K) with Mute/Report; reports appear in the server log as `REPORT {...}`. Names are plain text and messages are length-limited and rate-limited.
+
+## Voice on strict networks (TURN)
+Voice chat and phone calls are peer-to-peer. On many mobile data networks (carrier NAT) and office/school Wi-Fi the two phones can't reach each other directly, so players see each other but hear nothing. A **TURN server** relays the audio in that case. Only the calls that need it go through TURN; everyone else stays direct.
+
+**Free option: Metered (metered.ca) TURN**
+1. Sign up at https://www.metered.ca/stun-turn and create a free TURN app (check their pricing page for the current free monthly allowance; voice uses roughly 30–60 MB per hour per relayed call).
+2. In the dashboard open **TURN Credentials → Add credential**. Copy the *username*, *credential* and the server list.
+3. In Render → your service → **Environment**, add:
+   - `TURN_URL` = `turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:80?transport=tcp,turn:global.relay.metered.ca:443,turns:global.relay.metered.ca:443?transport=tcp`
+     (use the exact hostnames Metered shows you; separate several with commas — the TCP/443 entries get through the strictest firewalls)
+   - `TURN_USER` = your username
+   - `TURN_PASS` = your credential
+4. Save; Render redeploys. Nothing else to change — the server sends the list to every player when they join.
+
+Other providers with static username/password work the same way (e.g. ExpressTURN, or your own `coturn` on a small VPS). Cloudflare's TURN issues short-lived credentials through an API, so it would need extra server code.
+
+**Check it reached the players:** open the game, press F12 → Console and run `Net.ice` — you should see your `turn:` URLs. Locally: `TURN_URL=turn:example.com:3478 TURN_USER=u TURN_PASS=p npm start`, then `node test/turn-config.js`.
+The credentials are visible to players (they have to be, for WebRTC), so use a dedicated TURN credential and set a usage limit in the provider's dashboard.
 
 ## In-game phone
 Press **P** (or tap the phone button) to open your phone. Every player gets a permanent 6-digit number; dial a friend's number to ring them anywhere in the world. Calls are WebRTC voice (peer-to-peer; the server only relays the handshake). Needs a microphone and HTTPS (or localhost). Keys: **P** open/close, **Esc** back, digits + **Enter** dial, **Y**/**N** answer/decline an incoming call (**N** also ends a call while the phone is down).
