@@ -48,6 +48,12 @@ phoneStore.init().then(() => {
   console.log('Phone system ready (' + phoneStore.kind + ' store)' + (phoneStore.kind === 'memory' ? ' — numbers are NOT permanent, set DATABASE_URL' : ''));
 }).catch((e) => console.error('Phone system disabled:', e && e.message));
 const HEX = /^#[0-9a-fA-F]{6}$/;
+// --- moderation: profanity mask, chat rate limit, recent chat for reports ---
+const BAD = ['fuck','shit','bitch','bastard','asshole','dick','cunt','slut','whore','motherfucker','nigger','faggot','retard','punda','poori','thayoli','myre','myru','kunna','andi','kundi','maire','thendi','pooru','oombi'];
+const BAD_RE = new RegExp('(' + BAD.map(w => w.split('').join('[^a-z0-9]?')).join('|') + ')', 'gi');
+const cleanText = (t) => t.replace(BAD_RE, (w) => w[0] + '*'.repeat(Math.max(1, w.length - 1)));
+const recentChat = new Map(); // player id -> last lines [{ts,text}]
+const REPORT_LOG = path.join(__dirname, 'reports.log');
 const num = (v, lim = 1e5) => (typeof v === 'number' && isFinite(v) && Math.abs(v) < lim) ? v : null;
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const broadcast = (o, except) => { const s = JSON.stringify(o); for (const p of players.values()) if (p !== except && p.ws.readyState === 1) p.ws.send(s); };
@@ -62,7 +68,7 @@ function releaseVehicle(p) {
 }
 
 wss.on('connection', (ws) => {
-  let p = null, tokens = 40, lastRefill = Date.now(), lastChat = 0;
+  let p = null, tokens = 40, lastRefill = Date.now(), lastChat = 0, lastReport = 0; const chatTimes = [];
   ws.isAlive = true; ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
@@ -116,10 +122,21 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (m.t === 'rep') {                       // report a player: logged with reporter, target and their recent chat
+      if (now - lastReport < 30000) { send(ws, { t: 'warn', text: 'Report already sent — please wait' }); return; } lastReport = now;
+      const q = players.get(String(m.id)); if (!q || q === p) return;
+      const entry = { time: new Date(now).toISOString(), reporter: { id: p.id, name: p.name }, target: { id: q.id, name: q.name }, reason: String(m.reason || '').replace(/[\u0000-\u001f]/g, ' ').slice(0, 200), targetChat: recentChat.get(q.id) || [], reporterChat: recentChat.get(p.id) || [] };
+      console.log('REPORT ' + JSON.stringify(entry)); fs.appendFile(REPORT_LOG, JSON.stringify(entry) + '\n', () => {});
+      send(ws, { t: 'warn', text: 'Report sent. Thank you.' }); return;
+    }
+
     if (m.t === 'c') {
       if (now - lastChat < 600) return; lastChat = now;
-      const text = String(m.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 140);
+      chatTimes.push(now); while (chatTimes.length && now - chatTimes[0] > 10000) chatTimes.shift();
+      if (chatTimes.length > 5) { send(ws, { t: 'warn', text: 'You are sending messages too fast — wait a few seconds' }); return; }
+      const text = cleanText(String(m.text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 140));
       if (!text) return;
+      const rc = recentChat.get(p.id) || []; rc.push({ ts: new Date(now).toISOString(), text }); if (rc.length > 8) rc.shift(); recentChat.set(p.id, rc);
       const out = JSON.stringify({ t: 'c', id: p.id, name: p.name, text });
       for (const q of players.values()) {
         if (q === p || (q.ws.readyState === 1 && Math.hypot(q.x - p.x, q.z - p.z) <= CHAT_RADIUS)) { if (q.ws.readyState === 1) q.ws.send(out); }
@@ -130,7 +147,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (!p) return;
     if (phone) phone.detach(p);
-    releaseVehicle(p); players.delete(p.id);
+    releaseVehicle(p); players.delete(p.id); recentChat.delete(p.id);
     broadcast({ t: 'l', id: p.id, total: players.size });
   });
   ws.on('error', () => {});

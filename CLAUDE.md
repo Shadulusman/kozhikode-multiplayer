@@ -42,6 +42,10 @@
 - Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).
 - Board with E at a stopped bus (`Buses.board`), get off with E at a stop (`alight`). Riding players send `rb` = busId*100+seat; the server relays it in snapshots (index 11) and others see them seated.
 
+## Moderation
+- Client: People panel (button or K) lists players within 60 m with Mute / Report. Mute is by name, stored in localStorage `kzk_muted`; hides their chat and sets their voice gain to 0.
+- Server: chat profanity masked (`BAD` list, English + common Malayalam slurs), rate limit 600 ms gap and max 5 messages / 10 s (`warn` message), reports `{t:'rep',id,reason}` limited to 1 / 30 s, logged to stdout (`REPORT {...}`, visible in Render logs) and `reports.log` (gitignored, lost on Render redeploy) with reporter, target and both players' last 8 chat lines.
+
 ## Multiplayer rules
 - Client sends state ~12 Hz; server sends 10 Hz snapshots within 350 m.
 - Chat radius 30 m, voice connects within 25 m and hangs up past 35 m.
@@ -64,4 +68,4 @@
 - Headless checks used so far: Playwright + Chromium with `--use-gl=swiftshader` (slow: ~1 min per page load, run pages in the background); fake mic flags `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`.
 
 ## Ideas not done yet
-Accounts/moderation (mute/report), TURN server for voice on strict networks, remote-player vehicle collisions, saving last position.
+TURN server for voice on strict networks, remote-player vehicle collisions, saving last position.

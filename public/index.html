@@ -64,6 +64,9 @@ kbd{font:600 .78rem/1 var(--text);background:var(--lime);color:var(--ink);paddin
 #chatlog{position:absolute;left:18px;top:94px;width:min(340px,72vw);display:flex;flex-direction:column;gap:3px;pointer-events:none}
 .cm{background:rgba(10,26,28,.72);padding:.3rem .6rem;border-radius:6px;font-size:.86rem;line-height:1.3;color:#f6efe0;word-break:break-word;transition:opacity 1.2s;border-left:3px solid var(--gold)}.cm b{color:var(--gold);font-weight:600}.cm.me{border-left-color:var(--ksrtc)}.cm.old{opacity:0}#chatlog.open .cm.old{opacity:1}
 #chatin{display:none;position:absolute;left:18px;top:min(40vh,240px);width:min(340px,72vw);pointer-events:auto;font:600 1rem var(--text);padding:.65rem .8rem;border-radius:6px;border:2px solid var(--gold);background:rgba(10,26,28,.92);color:var(--lime);z-index:6}
+#pplbtn{display:none;position:absolute;left:22px;bottom:306px;width:58px;height:40px;border-radius:20px;align-items:center;justify-content:center;font:700 .72rem var(--display);background:rgba(10,26,28,.72);border:2px solid var(--lime);color:var(--lime);pointer-events:auto;cursor:pointer}
+#ppl{display:none;position:absolute;left:90px;bottom:240px;min-width:250px;max-height:50vh;overflow:auto;background:rgba(12,18,20,.82);backdrop-filter:blur(8px);border-radius:10px;padding:.5rem .6rem;pointer-events:auto;font:600 .85rem var(--text)}
+#ppl .row{display:flex;align-items:center;gap:.4rem;padding:.25rem 0}#ppl .row span{flex:1}#ppl button{font:700 .72rem var(--text);border:0;border-radius:6px;padding:.3rem .5rem;cursor:pointer}#ppl .mu{background:#e0e0e0}#ppl .mu.on{background:var(--gold)}#ppl .rp{background:#c62828;color:#fff}
 #micbtn{display:none;position:absolute;left:22px;bottom:240px;width:58px;height:58px;border-radius:50%;align-items:center;justify-content:center;text-align:center;font:700 .72rem/1.05 var(--display);background:rgba(10,26,28,.72);border:2px solid var(--lime);color:var(--lime);pointer-events:auto;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}#micbtn.on{background:#2e9d48;border-color:#fff}#micbtn.bad{border-color:var(--ksrtc);color:#ff9a9a}#micbtn.talk{box-shadow:0 0 0 5px rgba(46,157,72,.55)}@media (pointer:fine){#micbtn{left:18px;bottom:252px;width:auto;height:auto;border-radius:6px;padding:.4rem .7rem}}
 .nm.talk{background:#2e9d48}.nm.talk::before{content:'● ';color:#fff}
 .nm{position:absolute;left:0;top:0;pointer-events:none;font:600 .8rem var(--text);color:#fff;background:rgba(10,26,28,.65);padding:.1rem .5rem;border-radius:10px;white-space:nowrap;text-shadow:0 1px 2px #000;will-change:transform}
@@ -2779,27 +2782,31 @@ const Net = {
   init(){ this.url=this.resolveUrl(); const $=id=>document.getElementById(id), hud=$('hud');
     const mk=(tag,id)=>{ const e=document.createElement(tag); e.id=id; hud.appendChild(e); return e; };
     this.infoEl=mk('div','netinfo'); this.log=mk('div','chatlog'); this.chatIn=mk('input','chatin'); this.chatIn.maxLength=140; this.chatIn.placeholder='Message people within 30 m…'; this.chatIn.autocomplete='off';
+    this.muted=new Set(); try{ for(const n of JSON.parse(localStorage.getItem('kzk_muted')||'[]')) this.muted.add(n); }catch(e){}
+    this.pplBtn=mk('div','pplbtn'); this.pplBtn.textContent='People'; this.ppl=mk('div','ppl');
+    this.pplBtn.addEventListener('pointerdown',e=>{ e.preventDefault(); this.togglePeople(); });
     this.micBtn=mk('div','micbtn'); this.micBtn.textContent='Mic off'; this.micBtn.addEventListener('pointerdown',e=>{ e.preventDefault(); this.toggleMic(); });
     const nm=$('pname'); if(nm){ try{ nm.value=localStorage.getItem('kzk_name')||''; }catch(e){} }
     const note=$('mp-note'); if(note) note.textContent=this.url?'Multiplayer connects when you press start — people near you can see and talk to you.':'Single player (no multiplayer server linked).'; if(!this.url&&$('mp')) $('mp').style.display='none';
     this.chatIn.addEventListener('keydown',e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); this.closeChat(true); } else if(e.key==='Escape'){ e.preventDefault(); this.closeChat(false); } });
-    addEventListener('keydown',e=>{ if(e.code==='KeyB'&&!window.__typing&&Game.playing&&this.on&&!e.repeat) this.toggleMic(); if(e.code==='Enter'&&!window.__typing&&Game.playing&&this.on&&document.getElementById('travel').hidden){ e.preventDefault(); this.openChat(); } });
+    addEventListener('keydown',e=>{ if(e.code==='KeyK'&&!window.__typing&&Game.playing&&this.on&&!e.repeat) this.togglePeople(); if(e.code==='KeyB'&&!window.__typing&&Game.playing&&this.on&&!e.repeat) this.toggleMic(); if(e.code==='Enter'&&!window.__typing&&Game.playing&&this.on&&document.getElementById('travel').hidden){ e.preventDefault(); this.openChat(); } });
     window.__openChat=()=>this.openChat(); },
   setInfo(){ if(!this.infoEl) return; if(!this.on){ this.infoEl.style.display='none'; return; } let near=0; for(const r of this.remote.values()) if(Math.hypot(r.x-Player.x,r.z-Player.z)<30) near++; this.infoEl.style.display='block'; this.infoEl.textContent='● Online · '+(this.total||1)+' playing · '+near+' near you · Enter = chat · B = mic'; },
   connect(){ if(!this.url||this.ws) return; const nm=document.getElementById('pname'); let n=(nm&&nm.value||'').replace(/[^\p{L}\p{N} _.-]/gu,'').trim().slice(0,16); this.name=n||('Guest'+Math.floor(Math.random()*900+100)); try{ localStorage.setItem('kzk_name',n); }catch(e){}
     let ws; try{ ws=new WebSocket(this.url); }catch(e){ return; } this.ws=ws; let opened=false;
     ws.onopen=()=>{ opened=true; let tok=null; try{ tok=localStorage.getItem('kzk_ptok'); }catch(e){} ws.send(JSON.stringify({t:'join',name:this.name,look:MYLOOK,tok})); };
     ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch(err){ return; } this.msg(m); };
-    ws.onclose=()=>{ if(window.Phone) Phone.onNetClose(); const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); if(this.micBtn) this.micBtn.style.display='none'; this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
+    ws.onclose=()=>{ if(window.Phone) Phone.onNetClose(); const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); if(this.micBtn) this.micBtn.style.display='none'; if(this.pplBtn) this.pplBtn.style.display='none'; if(this.ppl) this.ppl.style.display='none'; this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
       if(was){ UI.toast('Disconnected — reconnecting…'); setTimeout(()=>this.connect(),2500); } else if(!opened){ if(this.retry++<1) UI.toast('Online server not reachable — playing solo'); } };
     ws.onerror=()=>{}; },
   msg(m){
     switch(m.t){
-      case 'w': if(m.now) this.tOff=m.now-Date.now(); this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
+      case 'w': if(m.now) this.tOff=m.now-Date.now(); this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; if(this.pplBtn) this.pplBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
       case 'j': this.info[m.id]={name:m.name,look:m.look}; this.total=m.total; UI.toast(m.name+' joined'); break;
       case 'l': { this.total=m.total; const r=this.remote.get(m.id); if(r){ this.drop(r); this.remote.delete(m.id); } delete this.info[m.id]; break; }
       case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.tsn=a[10]||0; r.trb=a[11]===undefined?-1:a[11]; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
-      case 'c': this.addChat(m.name,m.text,m.id===this.id); break;
+      case 'c': if(this.muted.has(m.name)&&m.id!==this.id) break; this.addChat(m.name,m.text,m.id===this.id); break;
+      case 'warn': UI.toast(m.text); break;
       case 'sig': this.onSig(m.from,m.d); break;
       case 'ph': if(window.Phone) Phone.onMsg(m); break;
       case 'v': this.applyVeh([[m.vi,m.x,m.y,m.z,m.h,m.occ]]); break;
@@ -2817,7 +2824,7 @@ const Net = {
     const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:PVEH.indexOf(v),sn:P.seat,vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,sn:0,vf:0,st:0};
     ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st),rb:P.bus?P.bus.b.id*100+P.bus.seat:-1})); },
   update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
-    const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); }
+    const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); this.renderPeople(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
       if(Math.hypot(r.tx-r.x,r.tz-r.z)>25){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; const pv=r.vi>=0?PVEH[r.vi]:null; if(pv&&pv===Player.veh&&r.sn===0){ pv.x=r.x; pv.y=r.y; pv.z=r.z; pv.h=r.h; Player.x=r.x; Player.y=r.y; Player.z=r.z; Player.h=r.h; Cam.snap(Player); Game.refreshWorld(r.x,r.z); } }
       r.x+=(r.tx-r.x)*k; r.y+=(r.ty-r.y)*k; r.z+=(r.tz-r.z)*k; r.h+=angDiff(r.h,r.th)*k;
@@ -2863,12 +2870,21 @@ const Net = {
   voiceUpdate(dt){ if(!this.actx) return; this.voiceT-=dt;
     if(this.voiceT<=0){ this.voiceT=0.5; for(const [id,r] of this.remote){ const d=Math.hypot(r.x-Player.x,r.z-Player.z), p=this.peers.get(id); if(window.Phone&&Phone.isPartner(id)){ if(p) this.hangup(id,p); continue; } if(!p&&d<25&&this.peers.size<6&&Number(this.id)<Number(id)) this.call(id); else if(p&&d>35) this.hangup(id,p); } for(const [id,p] of [...this.peers]) if(!this.remote.has(id)) this.hangup(id,p); }
     const yaw=Cam.yaw, rx=Math.cos(yaw), rz=-Math.sin(yaw), t=this.actx.currentTime; this.lvlT-=dt; const lv=this.lvlT<=0; if(lv) this.lvlT=0.12;
-    for(const [id,p] of this.peers){ const r=this.remote.get(id); if(!r||!p.nodes) continue; const dx=r.x-Player.x, dz=r.z-Player.z, d=Math.hypot(dx,dz); let vol=clamp(1-(d-3)/22,0,1); vol*=vol;
+    for(const [id,p] of this.peers){ const r=this.remote.get(id); if(!r||!p.nodes) continue; const dx=r.x-Player.x, dz=r.z-Player.z, d=Math.hypot(dx,dz); let vol=clamp(1-(d-3)/22,0,1); vol*=vol; if(this.muted.has((this.info[id]||{}).name)) vol=0;
       p.nodes.gain.gain.setTargetAtTime(vol,t,0.08); if(p.nodes.pan) p.nodes.pan.pan.setTargetAtTime(clamp((rx*dx+rz*dz)/Math.max(d,1),-1,1)*0.85,t,0.08);
       if(lv){ p.nodes.an.getByteTimeDomainData(p.buf); let m=0; for(let i=0;i<p.buf.length;i++){ const v=Math.abs(p.buf[i]-128); if(v>m) m=v; } r.lab.classList.toggle('talk',m>6&&vol>0.02); } }
     if(this.myAn&&lv&&this.micBtn){ const b=new Uint8Array(this.myAn.fftSize); this.myAn.getByteTimeDomainData(b); let m=0; for(let i=0;i<b.length;i++){ const v=Math.abs(b[i]-128); if(v>m) m=v; } this.micBtn.classList.toggle('talk',this.micOn&&m>6); } },
   openChat(){ if(!this.on||window.__typing) return; window.__typing=true; Input.k={}; this.chatIn.style.display='block'; this.log.classList.add('open'); this.chatIn.focus(); },
   closeChat(send){ const el=this.chatIn, t=el.value.trim(); if(send&&t&&this.ws&&this.ws.readyState===1) this.ws.send(JSON.stringify({t:'c',text:t.slice(0,140)})); el.value=''; el.style.display='none'; el.blur(); window.__typing=false; this.log.classList.remove('open'); const c=document.getElementById('c'); if(c) c.focus(); },
+  isMuted(id){ return this.muted.has((this.info[id]||{}).name); },
+  setMuted(name,on){ if(on) this.muted.add(name); else this.muted.delete(name); try{ localStorage.setItem('kzk_muted',JSON.stringify([...this.muted])); }catch(e){} UI.toast(on?name+' muted':name+' unmuted'); this.renderPeople(); },
+  report(id){ const inf=this.info[id]; if(!inf||!this.ws||this.ws.readyState!==1) return; const reason=prompt('Report '+inf.name+'? Optional reason:',''); if(reason===null) return; this.ws.send(JSON.stringify({t:'rep',id,reason:reason.slice(0,200)})); },
+  togglePeople(){ const on=this.ppl.style.display!=='block'; this.ppl.style.display=on?'block':'none'; if(on) this.renderPeople(); },
+  renderPeople(){ const el=this.ppl; if(!el||el.style.display!=='block') return; el.innerHTML=''; const list=[...this.remote.values()].map(r=>({r,d:Math.hypot(r.x-Player.x,r.z-Player.z)})).filter(o=>o.d<60).sort((a,b)=>a.d-b.d);
+    if(!list.length){ el.textContent='Nobody near you'; return; }
+    for(const {r,d} of list){ const name=(this.info[r.id]||{}).name||'?', row=document.createElement('div'); row.className='row'; const sp=document.createElement('span'); sp.textContent=name+' · '+Math.round(d)+' m'; row.appendChild(sp);
+      const mu=document.createElement('button'); mu.className='mu'+(this.muted.has(name)?' on':''); mu.textContent=this.muted.has(name)?'Unmute':'Mute'; mu.onclick=()=>this.setMuted(name,!this.muted.has(name)); row.appendChild(mu);
+      const rp=document.createElement('button'); rp.className='rp'; rp.textContent='Report'; rp.onclick=()=>this.report(r.id); row.appendChild(rp); el.appendChild(row); } },
   addChat(name,text,self){ const d=document.createElement('div'); d.className='cm'+(self?' me':''); const b=document.createElement('b'); b.textContent=name+': '; d.appendChild(b); d.appendChild(document.createTextNode(text)); this.log.appendChild(d); while(this.log.children.length>8) this.log.removeChild(this.log.firstChild); setTimeout(()=>d.classList.add('old'),14000); },
 };
 Net.init();
