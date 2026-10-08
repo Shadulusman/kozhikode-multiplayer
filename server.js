@@ -52,7 +52,7 @@ const num = (v, lim = 1e5) => (typeof v === 'number' && isFinite(v) && Math.abs(
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
 const broadcast = (o, except) => { const s = JSON.stringify(o); for (const p of players.values()) if (p !== except && p.ws.readyState === 1) p.ws.send(s); };
 const cleanName = (n, id) => (String(n || '').replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16)) || ('Guest' + id);
-const cleanLook = (l) => { l = l || {}; return { shirt: HEX.test(l.shirt) ? l.shirt : '#1f6f8a', skin: HEX.test(l.skin) ? l.skin : '#8d5a3b', pants: HEX.test(l.pants) ? l.pants : '#2b3548' }; };
+const cleanLook = (l) => { l = l || {}; return { shirt: HEX.test(l.shirt) ? l.shirt : '#1f6f8a', skin: HEX.test(l.skin) ? l.skin : '#8d5a3b', pants: HEX.test(l.pants) ? l.pants : '#2b3548', g: l.g === 'f' ? 'f' : 'm' }; };
 
 function releaseVehicle(p) {
   if (p.vi < 0) return;
