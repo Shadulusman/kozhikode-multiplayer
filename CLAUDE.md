@@ -33,6 +33,14 @@
 - NPC traffic/peds are local per player (not synced). Vehicle poses are kept by the server.
 - Page must be opened from the server origin (or with `?server=wss://host/ws`). Mic needs HTTPS.
 
+## In-game phone (branch `partner-dev`)
+- Server: `phone-server.js` (call sessions: ringing -> answered -> ended, rate limit, glare/busy, signalling relay; identity = `p.ph.user`, never message fields) and `phone-store.js` (Postgres via `DATABASE_URL`, or in-memory fallback). `server.js` only routes `t:'ph'` messages, attaches on `join` (token `tok`) and detaches on close.
+- Client: `public/phone.js` + `public/phone.css` (own files so index.html merges stay trivial). index.html hooks: `tok` in the join message, `case 'ph'`, `Phone.onNetClose()` in `ws.onclose`, and `Phone.isPartner(id)` in `voiceUpdate` (stops proximity voice with the person you are on a call with).
+- Client call state machine (`P.go`): IDLE, DIALING, CALLING, RINGING, CONNECTING, ACTIVE, ENDING, ENDED, FAILED. Everything a call allocates is released in `teardown()`.
+- Phone uses its own mic track (clone of `Net.track` if proximity mic is on) so muting a call never mutes proximity chat. CSS class names must not collide with game CSS (`.nm` is the game's name tag: the phone uses `.pnm`).
+- Key P opens the phone; while open `window.__typing` is set so game keys don't leak. Incoming calls open the phone in "auto" mode without suspending game input (Y/N answer/decline).
+- Not done: phone-in-hand character animation, replicating "on a phone" state to nearby players, telephone-style audio EQ, Redis for multi-instance.
+
 ## Testing
 - `npm install && npm start`, open http://localhost:3000 in two tabs.
 - Headless checks used so far: Playwright + Chromium with `--use-gl=swiftshader` (slow: ~1 min per page load, run pages in the background); fake mic flags `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`.

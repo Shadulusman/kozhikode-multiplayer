@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kozhikode in miniature (Copy)</title>
+<link rel="stylesheet" href="phone.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+Chettan+2:wght@500;700;800&family=Mukta+Malayalam:wght@400;600&display=swap">
 <style>
 :root{--laterite:#9a4a2a;--lime:#f6efe0;--ksrtc:#c8102e;--teal:#0f3b40;--ink:#0a1a1c;--gold:#f2b84b;--green:#2e9d48;
@@ -2562,9 +2563,9 @@ const Net = {
   setInfo(){ if(!this.infoEl) return; if(!this.on){ this.infoEl.style.display='none'; return; } let near=0; for(const r of this.remote.values()) if(Math.hypot(r.x-Player.x,r.z-Player.z)<30) near++; this.infoEl.style.display='block'; this.infoEl.textContent='● Online · '+(this.total||1)+' playing · '+near+' near you · Enter = chat · B = mic'; },
   connect(){ if(!this.url||this.ws) return; const nm=document.getElementById('pname'); let n=(nm&&nm.value||'').replace(/[^\p{L}\p{N} _.-]/gu,'').trim().slice(0,16); this.name=n||('Guest'+Math.floor(Math.random()*900+100)); try{ localStorage.setItem('kzk_name',n); }catch(e){}
     let ws; try{ ws=new WebSocket(this.url); }catch(e){ return; } this.ws=ws; let opened=false;
-    ws.onopen=()=>{ opened=true; ws.send(JSON.stringify({t:'join',name:this.name,look:MYLOOK})); };
+    ws.onopen=()=>{ opened=true; let tok=null; try{ tok=localStorage.getItem('kzk_ptok'); }catch(e){} ws.send(JSON.stringify({t:'join',name:this.name,look:MYLOOK,tok})); };
     ws.onmessage=e=>{ let m; try{ m=JSON.parse(e.data); }catch(err){ return; } this.msg(m); };
-    ws.onclose=()=>{ const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); if(this.micBtn) this.micBtn.style.display='none'; this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
+    ws.onclose=()=>{ if(window.Phone) Phone.onNetClose(); const was=this.on; this.on=false; this.ws=null; this.clearRemotes(); if(this.micBtn) this.micBtn.style.display='none'; this.setInfo(); if(window.__chatBtn) window.__chatBtn.style.display='none';
       if(was){ UI.toast('Disconnected — reconnecting…'); setTimeout(()=>this.connect(),2500); } else if(!opened){ if(this.retry++<1) UI.toast('Online server not reachable — playing solo'); } };
     ws.onerror=()=>{}; },
   msg(m){
@@ -2575,6 +2576,7 @@ const Net = {
       case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.tsn=a[10]||0; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
       case 'c': this.addChat(m.name,m.text,m.id===this.id); break;
       case 'sig': this.onSig(m.from,m.d); break;
+      case 'ph': if(window.Phone) Phone.onMsg(m); break;
       case 'v': this.applyVeh([[m.vi,m.x,m.y,m.z,m.h,m.occ]]); break;
       case 'deny': { const dv=Player.veh; if(dv&&PVEH.indexOf(dv)===m.vi&&Player.seat===m.sn){ if(m.sn+1<seatCap(dv)){ Player.seat=m.sn+1; dv.driver=false; if(!seatIn(dv,Player,Player.seat)) Player.g.visible=false; UI.toast('Riding as passenger'); } else { Player.exit(Game.scene); UI.toast('That vehicle is full'); } } break; }
     } },
@@ -2633,7 +2635,7 @@ const Net = {
     const src=ac.createMediaStreamSource(stream), gain=ac.createGain(), pan=ac.createStereoPanner?ac.createStereoPanner():null, an=ac.createAnalyser(); an.fftSize=256; gain.gain.value=0; src.connect(an); src.connect(gain); if(pan){ gain.connect(pan); pan.connect(ac.destination); } else gain.connect(ac.destination);
     p.nodes={src,gain,pan,an}; p.buf=new Uint8Array(an.fftSize); },
   voiceUpdate(dt){ if(!this.actx) return; this.voiceT-=dt;
-    if(this.voiceT<=0){ this.voiceT=0.5; for(const [id,r] of this.remote){ const d=Math.hypot(r.x-Player.x,r.z-Player.z), p=this.peers.get(id); if(!p&&d<25&&this.peers.size<6&&Number(this.id)<Number(id)) this.call(id); else if(p&&d>35) this.hangup(id,p); } for(const [id,p] of [...this.peers]) if(!this.remote.has(id)) this.hangup(id,p); }
+    if(this.voiceT<=0){ this.voiceT=0.5; for(const [id,r] of this.remote){ const d=Math.hypot(r.x-Player.x,r.z-Player.z), p=this.peers.get(id); if(window.Phone&&Phone.isPartner(id)){ if(p) this.hangup(id,p); continue; } if(!p&&d<25&&this.peers.size<6&&Number(this.id)<Number(id)) this.call(id); else if(p&&d>35) this.hangup(id,p); } for(const [id,p] of [...this.peers]) if(!this.remote.has(id)) this.hangup(id,p); }
     const yaw=Cam.yaw, rx=Math.cos(yaw), rz=-Math.sin(yaw), t=this.actx.currentTime; this.lvlT-=dt; const lv=this.lvlT<=0; if(lv) this.lvlT=0.12;
     for(const [id,p] of this.peers){ const r=this.remote.get(id); if(!r||!p.nodes) continue; const dx=r.x-Player.x, dz=r.z-Player.z, d=Math.hypot(dx,dz); let vol=clamp(1-(d-3)/22,0,1); vol*=vol;
       p.nodes.gain.gain.setTargetAtTime(vol,t,0.08); if(p.nodes.pan) p.nodes.pan.pan.setTargetAtTime(clamp((rx*dx+rz*dz)/Math.max(d,1),-1,1)*0.85,t,0.08);
@@ -3009,5 +3011,6 @@ window.addEventListener('error',e=>{ const el=document.getElementById('load-txt'
 Game.boot().catch(e=>{ console.error(e); const el=document.getElementById('load-txt'); if(el) el.textContent='Something went wrong while building the city: '+e.message; });
 
 </script>
+<script src="phone.js"></script>
 </body>
 </html>
