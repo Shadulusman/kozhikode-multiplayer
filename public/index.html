@@ -898,7 +898,17 @@ function pointBlocked(x,y,z){
 }
 
 /* ---------- sector batches (streaming / LOD units) ---------- */
-const BATCHES = [], CHUNKS = new Map();
+const BATCHES = [], CHUNKS = new Map(), POLES = [];
+/** overhead lines: each KSEB pole is wired to its nearest aligned neighbour (3 sagging conductors between matching insulators). One LineSegments draw call. */
+function buildCables(scene){ const pos=[], g=new Map(), key=(x,z)=>Math.floor(x/50)+','+Math.floor(z/50);
+  for(const p of POLES){ const k=key(p.x,p.z); (g.get(k)||g.set(k,[]).get(k)).push(p); }
+  for(const a of POLES){ const ax=Math.sin(a.r), az=Math.cos(a.r); let best=null, bd=46;
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const b of g.get((Math.floor(a.x/50)+i)+','+(Math.floor(a.z/50)+j))||[]){ if(b===a) continue; const dx=b.x-a.x, dz=b.z-a.z, d=Math.hypot(dx,dz); if(d<12||d>=bd) continue; const al=(dx*ax+dz*az)/d; if(al>0.9){ bd=d; best=b; } }
+    if(!best) continue; const b=best, ca=[Math.cos(a.r),-Math.sin(a.r)], cb=[Math.cos(b.r),-Math.sin(b.r)], flip=ca[0]*cb[0]+ca[1]*cb[1]<0?-1:1, sag=0.35+bd*0.012;
+    for(const o of[-0.85,0,0.85]){ const p0=[a.x+ca[0]*o,a.y+7.86,a.z+ca[1]*o], p1=[b.x+cb[0]*o*flip,b.y+7.86,b.z+cb[1]*o*flip]; let prev=null;
+      for(let t=0;t<=8;t++){ const u=t/8, q=[lerp(p0[0],p1[0],u),lerp(p0[1],p1[1],u)-sag*4*u*(1-u),lerp(p0[2],p1[2],u)]; if(prev) pos.push(...prev,...q); prev=q; } } }
+  if(!pos.length) return; const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const m=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x1b1b1a,transparent:true,opacity:0.85})); m.frustumCulled=false; m.matrixAutoUpdate=false; scene.add(m); return pos.length/6; }
 const MATKEYS = { // key -> [material getter, lod, castShadow]
   plain:[()=>MAT.plain,'far',true], plainDS:[()=>MAT.plainDS,'far',true], glass:[()=>MAT.glass,'far',true], tile:[()=>MAT.tile,'far',true], tin:[()=>MAT.tin,'far',true],
   laterite:[()=>MAT.laterite,'far',true], concrete:[()=>MAT.concrete,'far',true], shop:[()=>MAT.shop,'near',false], sign:[()=>MAT.sign,'mid',false], ad:[()=>MAT.ad,'mid',false],
@@ -921,7 +931,7 @@ class Batch {
       this.add1(type==='palm'?['palmA','palmB','palmC'][Math.floor(hsh*3)]:type==='tree'?'treeHi':'shrubHi',lx,y,lz,ry,sx,sy,sz,tint); } // near: detailed variant; the original stays as the distance LOD
     else if(type==='palm'||type==='tree'||type==='shrub') type+='M'; // big/far batches: keep the simple model at every distance
     this.add1(type,lx,y,lz,ry,sx,sy,sz,tint); }
-  add1(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
+  add1(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; if(type==='pole'){ const [wx,wz]=this.W(lx,lz); POLES.push({x:wx,z:wz,y:y+(f?f.y:0),r:ry+(f?f.rot:0)}); } let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
     (this.inst[type]||(this.inst[type]=[])).push(x,y,z,ry,sx,sy===undefined?sx:sy,sz===undefined?sx:sz, tint?tint[0]:1,tint?tint[1]:1,tint?tint[2]:1); }
   /** collider in local coords */
   col(lx,lz,sx,sz,rot=0,h=30,y0=0){ const [x,z]=this.W(lx,lz); return addCol(x,z,sx,sz,rot+(this.fr?this.fr.rot:0),h+(this.fr?this.fr.y:0),y0+(this.fr?this.fr.y:0)); }
@@ -1020,6 +1030,9 @@ function buildRoads(){
     else if(e.type==='art'){ for(const sg of[-1,1]){ eDashes(G.mark,e,sg*3.95,0.14,s0,s1,3,4.5,0.04,Wc); eStrip(G.mark,e,sg*7.5-0.07,sg*7.5+0.07,s0,s1,0.04,Wc);} }
     else if(e.type==='main'){ eDashes(G.mark,e,0,0.14,s0,s1,3,4.5,0.04,Wc); for(const sg of[-1,1]) eStrip(G.mark,e,sg*4.55-0.06,sg*4.55+0.06,s0,s1,0.04,Wc); }
     else if(e.type==='svc'){ for(const sg of[-1,1]){ eStrip(G.mark,e,sg*9.1-0.07,sg*9.1+0.07,s0,s1,0.04,Wc); eStrip(G.mark,e,sg*15.0-0.07,sg*15.0+0.07,s0,s1,0.04,Wc);} }
+    // KSEB pole line on one side of every town street (the overhead cables are strung between them in buildCables)
+    if(e.type==='art'||e.type==='main'){ const off=hw+(T_.side>0?T_.side+0.15:0.9), sd=(String(e.a).length+String(e.b).length)%2?1:-1;
+      for(let s=e.ta+9;s<len-e.tb-9;s+=34){ const f=eFrame(e,s), x=f.x+f.nx*off*sd, z=f.z+f.nz*off*sd; chunkAt(x,z).add('pole',x,0,z,Math.atan2(f.dx,f.dz)); addCol(x,z,0.3,0.3,0,8); } }
     // manholes in the lanes and drain gratings at the kerb
     if(e.type==='art'||e.type==='main'){ const iron=C('#3b3936'), rim=C('#5d5a55'), grate=C('#262523');
       for(let s=s0+11;s<s1-4;s+=R(55,90)){ const f=eFrame(e,s), lo=(R(1)<0.5?-1:1)*hw*R(0.3,0.6), cx=f.x+f.nx*lo, cz=f.z+f.nz*lo, K=14;
@@ -3029,7 +3042,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     await step(0.48,'Opening the shops on S.M. Street…'); const order={ped:0,art:1,svc:2,main:3,hw:4,st:5}; for(const e of EDGES.slice().sort((a,b)=>order[a.type]-order[b.type])) fillEdge(e);
     await step(0.62,'Filling in the neighbourhoods…'); fillBack();
     await step(0.72,'Planting coconut palms…'); fillVegetation(); fillStreetProps();
-    await step(0.82,'Pouring the Arabian Sea…'); buildGround(scene); finalizeDecals(scene); this.stats=finalizeBatches(scene); Env.init(scene,renderer,camera);
+    await step(0.82,'Pouring the Arabian Sea…'); buildGround(scene); finalizeDecals(scene); this.cables=buildCables(scene); this.stats=finalizeBatches(scene); Env.init(scene,renderer,camera);
     await step(0.92,'Starting the buses…'); spawnPlayerVehicles(scene); await loadChars(); Player.init(scene); Traffic.init(scene,84); Train.init(scene); Peds.init(scene); Input.init(canvas);
     this.focus={x:-525,y:0,z:0}; Traffic.refreshCands(this.focus.x,this.focus.z); Traffic.want=Traffic.target; for(let i=0;i<500&&Traffic.count()<Traffic.target;i++) Traffic.spawn(this.focus.x,this.focus.z,camera,true);
     this.setQuality(this.autoQuality(),true);
