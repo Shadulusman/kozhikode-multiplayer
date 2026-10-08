@@ -2530,9 +2530,10 @@ const Peds = {
     else { shirt=pick(['#f5f5f5','#bbdefb','#c8e6c9','#fff9c4','#90a4ae','#d7ccc8','#ef9a9a','#3949ab','#00695c','#f5f5f5','#263238','#ffcc80']); if(chance(0.4)&&!kid){ skirt=true; lower=pick(['#fafafa','#fafafa','#f3e9cf','#e3f2fd']); legc=skin; } else { lower=pick(['#263238','#37474f','#1a237e','#4e342e','#212121','#546e7a']); legc=lower; } if(chance(0.07)) hair='#f5f5f5'; else if(chance(0.1)) hair='#9e9e9e'; }
     const P=this.parts, i=p.i, set=(m,hex)=>{ const c=C(hex); m.setColorAt(i,_ic.setRGB(c[0],c[1],c[2])); };
     set(P.torso,shirt); set(P.head,skin); set(P.hair,hair); set(P.armL,fem||chance(0.5)?shirt:skin); set(P.armR,fem||chance(0.5)?shirt:skin); set(P.legL,legc); set(P.legR,legc); set(P.skirt,lower); p.skirt=skirt; p.fem=fem; p.braid=fem&&!kid&&chance(0.65); set(P.neck,skin); set(P.nose,skin); set(P.handL,skin); set(P.handR,skin); set(P.hairBack,hair); const sc=pick(['#1b1b1b','#3a2a1e','#f2f2f2','#5d4037','#212121','#b3261e']); set(P.shoeL,sc); set(P.shoeR,sc);
+    p.look={shirt, pants:fem||skirt?lower:legc, skin, hair}; p.avPh=R(10);
     for(const k in P) P[k].instanceColor.needsUpdate=true; },
   free(){ for(const p of this.list) if(!p.act) return p; return null; },
-  kill(p){ p.act=false; for(const k in this.parts) this.parts[k].setMatrixAt(p.i,_pz); this.dirty=true; if(p.zone){ const a=p.zone.cur, j=a.indexOf(p); if(j>=0) a.splice(j,1); p.zone=null; } },
+  kill(p){ if(p.av) this.freeAv(p); p.act=false; for(const k in this.parts) this.parts[k].setMatrixAt(p.i,_pz); this.dirty=true; if(p.zone){ const a=p.zone.cur, j=a.indexOf(p); if(j>=0) a.splice(j,1); p.zone=null; } },
   spawnZone(z){ const p=this.free(); if(!p) return; p.zone=z; z.cur.push(p); p.amb=false; this.dress(p); p.sp=R(0.9,1.5); p.wait=R(0,4); p.hop=false;
     if(z.edge){ const e=z.edge; p.mode=0; p.e=e; p.dir=chance(0.5)?1:-1; p.s=R(e.ta+3,e.len-e.tb-3); p.side=1; p.off=R(-e.T.hw+0.9,e.T.hw-0.9); p.pin=true; this.edgePos(p); }
     else { p.mode=1; p.x=R(z.x0,z.x1); p.z=R(z.z0,z.z1); p.tx=p.x; p.tz=p.z; p.h=R(TAU); p.pin=false; }
@@ -2540,6 +2541,18 @@ const Peds = {
   edgePos(p){ const e=p.e; eFrame(e,p.s); p.x=_ef.x+_ef.nx*p.side*p.off; p.z=_ef.z+_ef.nz*p.side*p.off; p.th=Math.atan2(_ef.dx*p.dir,_ef.dz*p.dir); },
   spawnAmbient(px,pz){ const cs=this.pedEdges; if(!cs||!cs.length) return; const c=wpick(cs,q=>q.w), e=c.e; const p=this.free(); if(!p) return; p.e=e; p.dir=chance(0.5)?1:-1; p.s=R(e.ta+3,e.len-e.tb-3); p.side=chance(0.5)?1:-1; p.off=e.T.hw+(e.T.side?0.3+e.T.side*R(0.3,0.75):R(0.6,1.3)); if(e.beach&&p.side<0) p.off+=R(2,18); p.mode=0; p.pin=false; p.hop=false; this.edgePos(p);
     const d=Math.hypot(p.x-px,p.z-pz); if(d<34||d>165) return; const zn=zoneAt(p.x,p.z); if(!chance(Math.min(1,zn.ped))) return; p.amb=true; p.zone=null; this.dress(p); p.sp=R(1.0,1.6); p.wait=0; p.h=p.th; p.y=groundY(p.x,p.z,6); p.act=true; },
+  /* rigged-pedestrian LOD: the nearest avN pedestrians borrow a skinned man from a pool (re-tinted to their colours); the rest stay instanced */
+  avN:10, pool:null,
+  mkPool(){ this.pool=[]; for(let i=0;i<28;i++){ const o={g:'m',o:i%10===9?3:i%3}; const a=makeAvatar(o); a.root.visible=false; Game.scene.add(a.root); const mats={}; a.root.traverse(n=>{ if(n.isMesh) for(const m of [].concat(n.material)) (mats[m.name]||(mats[m.name]=[])).push(m); }); this.pool.push({a,mats,ped:null,ctl:{av:a.av,speed:0,air:0,seat:0}}); } },
+  freeAv(p){ const s=p.av; s.ped=null; s.a.root.visible=false; p.av=null; },
+  takeAv(p){ const s=this.pool.find(q=>!q.ped); if(!s) return; s.ped=p; p.av=s; const L=p.look||{}, tint=(k,hex)=>{ for(const m of s.mats[k]||[]) m.color.set(hex).convertSRGBToLinear(); };
+    tint('Shirt',L.shirt||'#f5f5f5'); tint('Shirt2',L.shirt||'#f5f5f5'); tint('Pants',L.pants||'#263238'); tint('Skin',L.skin||'#8d5a3b'); tint('Hair',L.hair||'#17120e'); tint('Hair2',L.hair||'#17120e');
+    s.a.av.cur=null; s.a.root.visible=true; s.a.root.scale.setScalar(p.sc||1); },
+  updateAvatars(dt,px,pz){ if(!CHAR.ready) return; if(!this.pool) this.mkPool(); const K=Math.min(this.avN||0,this.pool.length);
+    const near=[]; for(const p of this.list) if(p.act){ const d=(p.x-px)*(p.x-px)+(p.z-pz)*(p.z-pz); if(d<55*55) near.push([d,p]); } near.sort((a,b)=>a[0]-b[0]); const want=new Set(near.slice(0,K).map(e=>e[1]));
+    for(const s of this.pool) if(s.ped&&!want.has(s.ped)) this.freeAv(s.ped);
+    for(const p of want){ if(!p.av) this.takeAv(p); const s=p.av; if(!s) continue; const r=s.a.root; r.position.set(p.x,p.y,p.z); r.rotation.y=p.h;
+      s.ctl.speed=(p.amp||0)>0.3?p.sp:0; avAnimate(s.ctl,dt,false); } },
   update(dt,px,pz,pv,cam){
     this.t+=dt; this.scan=(this.scan||0)-dt;
     if(this.scan<=0){ this.scan=0.8; this.pedEdges=[]; for(const e of EDGES){ if(!e.peds||e.type==='ped'||e.len<50) continue; const a=e.pts[0], b=e.pts[e.pts.length-1]; const d=Math.min(Math.hypot(a.x-px,a.z-pz),Math.hypot(b.x-px,b.z-pz),Math.hypot((a.x+b.x)/2-px,(a.z+b.z)/2-pz)); if(d<240){ const zn=zoneAt((a.x+b.x)/2,(a.z+b.z)/2); this.pedEdges.push({e,w:e.len*zn.ped}); } }
@@ -2569,8 +2582,10 @@ const Peds = {
       const lsw=p.skirt?sw*0.45:sw; put(P.legL,0.085,0.85+bob,0,-lsw); put(P.legR,-0.085,0.85+bob,0,lsw); if(p.skirt) put(P.skirt,0,p.fem?0.92:0.9+bob,0,0); else P.skirt.setMatrixAt(i,_pz);
       put(P.neck,0,1.45+bob,0,0); put(P.nose,0,1.512+bob,0.103,0); put(P.handL,0.215,1.36+bob,0,sw*0.9); put(P.handR,-0.215,1.36+bob,0,-sw*0.9); put(P.shoeL,0.085,0.85+bob,0,-lsw); put(P.shoeR,-0.085,0.85+bob,0,lsw);
       if(p.braid) put(P.hairBack,0,1.5+bob,-0.125,0.08+Math.abs(sw)*0.12); else P.hairBack.setMatrixAt(i,_pz);
+      if(p.av) for(const k in P) P[k].setMatrixAt(i,_pz); // drawn by its rigged avatar instead
       any=true;
     }
+    this.updateAvatars(dt,px,pz);
     if(any||this.dirty){ for(const k in P) P[k].instanceMatrix.needsUpdate=true; this.dirty=false; }
   },
   obstacles(out,px,pz){ for(const p of this.list){ if(p.act&&Math.abs(p.x-px)<160&&Math.abs(p.z-pz)<160) out.push(p); } },
@@ -3083,15 +3098,15 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
   refreshWorld(x,z,quiet){
     for(const v of Traffic.list){ v.act=false; v.mesh.visible=false; } Traffic.refreshCands(x,z); for(let i=0;i<500&&Traffic.count()<Traffic.target*0.9;i++) Traffic.spawn(x,z,this.camera,true); Peds.scan=0; if(!quiet) UI.fade(); },
   /** graphics presets: render scale, shadow tier (map size / area around the player), detail distance, traffic and pedestrian density. Gameplay is unchanged. */
-  QUALITY:[ {name:'Low',pr:0.8,sh:0,LOD:0.62,traffic:34,peds:12}, {name:'Medium',pr:1,sh:1024,box:60,LOD:0.8,traffic:46,peds:18},
-            {name:'High',pr:1.5,sh:2048,box:95,LOD:1,traffic:60,peds:26}, {name:'Ultra',pr:2,sh:4096,box:130,LOD:1.25,traffic:72,peds:34} ],
+  QUALITY:[ {name:'Low',pr:0.8,sh:0,LOD:0.62,traffic:34,peds:12,pedAv:5}, {name:'Medium',pr:1,sh:1024,box:60,LOD:0.8,traffic:46,peds:18,pedAv:10},
+            {name:'High',pr:1.5,sh:2048,box:95,LOD:1,traffic:60,peds:26,pedAv:18}, {name:'Ultra',pr:2,sh:4096,box:130,LOD:1.25,traffic:72,peds:34,pedAv:28} ],
   autoQuality(){ let q=null; try{ const v=localStorage.getItem('kzk_q'); if(v!==null&&this.QUALITY[+v]) q=+v; }catch(e){}
     if(q!==null) return q; const touch=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window), mem=navigator.deviceMemory||8, cores=navigator.hardwareConcurrency||8;
     if(touch) return (mem<=4||cores<=4)?0:1; return (mem<=4||cores<=4)?1:2; },
   setQuality(q,quiet){ const P=this.QUALITY[q], r=this.renderer, S=Env.sun.shadow; this.q=q;
     this.prMax=Math.min(devicePixelRatio||1,P.pr); r.shadowMap.enabled=P.sh>0; Env.sun.castShadow=P.sh>0;
     if(P.sh){ if(S.mapSize.x!==P.sh){ S.mapSize.set(P.sh,P.sh); if(S.map){ S.map.dispose(); S.map=null; } } const c=S.camera; c.left=c.bottom=-P.box; c.right=c.top=P.box; c.updateProjectionMatrix(); }
-    LOD.scale=P.LOD; Traffic.target=P.traffic; Peds.ambient=P.peds; this.pr=this.prMax; r.setPixelRatio(this.pr); r.setSize(innerWidth,innerHeight,false);
+    LOD.scale=P.LOD; Traffic.target=P.traffic; Peds.ambient=P.peds; Peds.avN=P.pedAv; this.pr=this.prMax; r.setPixelRatio(this.pr); r.setSize(innerWidth,innerHeight,false);
     this.scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } }); if(!quiet) UI.toast('Graphics: '+P.name); },
   quality(){ const q=((this.q||0)+1)%this.QUALITY.length; try{ localStorage.setItem('kzk_q',q); }catch(e){} this.setQuality(q); },
   loop(t){ if(this.manual) return; requestAnimationFrame(tt=>this.loop(tt)); const dt=Math.min(0.05,Math.max(0.001,(t-this.last)/1000)); this.last=t; this.tick(dt,true); },
