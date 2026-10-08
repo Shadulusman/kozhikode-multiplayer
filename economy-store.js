@@ -26,6 +26,9 @@ class PgStore {
       id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL, type TEXT NOT NULL, amount BIGINT NOT NULL,
       balance_after BIGINT NOT NULL, source TEXT NOT NULL DEFAULT '', at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     await this.q('CREATE INDEX IF NOT EXISTS eco_tx_user_ix ON eco_tx (user_id, at DESC)');
+    await this.q('CREATE TABLE IF NOT EXISTS eco_daily (user_id BIGINT NOT NULL, day TEXT NOT NULL, data TEXT NOT NULL DEFAULT \'{}\', PRIMARY KEY (user_id, day))');
+    await this.q('CREATE TABLE IF NOT EXISTS eco_inv (user_id BIGINT NOT NULL, item TEXT NOT NULL, qty INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, item))');
+    await this.q('CREATE TABLE IF NOT EXISTS eco_best (user_id BIGINT NOT NULL, race TEXT NOT NULL, ms INTEGER NOT NULL, PRIMARY KEY (user_id, race))');
   }
   row(r) { return r && { cash: Number(r.cash), bank: Number(r.bank), xp: Number(r.xp), rep: r.rep, earned: Number(r.total_earned), spent: Number(r.total_spent), jobs: r.jobs_done, outfit: JSON.parse(r.outfit || '{}') }; }
   async profile(uid, outfit) {
@@ -62,6 +65,19 @@ class PgStore {
     finally { c.release(); }
   }
   async setOutfit(uid, outfit) { await this.q('UPDATE eco_profiles SET outfit = $2 WHERE user_id = $1', [uid, JSON.stringify(outfit)]); }
+  /** pay a bonus/sale without counting it as a job */
+  async pay(uid, amount, xp, type, source) { const r = await this.q('UPDATE eco_profiles SET cash = cash + $2::bigint, xp = xp + $3::bigint, total_earned = total_earned + $2::bigint WHERE user_id = $1 RETURNING cash', [uid, amount, xp]); const after = Number(r.rows[0].cash);
+    await this.q('INSERT INTO eco_tx (user_id, type, amount, balance_after, source) VALUES ($1,$2,$3,$4,$5)', [uid, type, amount, after, source]); return after; }
+  /** entry fees etc.: only if the player can afford it */
+  async debit(uid, amount, type, source) { const r = await this.q('UPDATE eco_profiles SET cash = cash - $2::bigint, total_spent = total_spent + $2::bigint WHERE user_id = $1 AND cash >= $2::bigint RETURNING cash', [uid, amount]); if (!r.rows.length) return null;
+    const after = Number(r.rows[0].cash); await this.q('INSERT INTO eco_tx (user_id, type, amount, balance_after, source) VALUES ($1,$2,$3,$4,$5)', [uid, type, -amount, after, source]); return after; }
+  async daily(uid, day) { const r = await this.q('SELECT data FROM eco_daily WHERE user_id = $1 AND day = $2', [uid, day]); return r.rows[0] ? JSON.parse(r.rows[0].data) : {}; }
+  async setDaily(uid, day, data) { await this.q('INSERT INTO eco_daily (user_id, day, data) VALUES ($1,$2,$3) ON CONFLICT (user_id, day) DO UPDATE SET data = EXCLUDED.data', [uid, day, JSON.stringify(data)]); }
+  async inv(uid) { const r = await this.q('SELECT item, qty FROM eco_inv WHERE user_id = $1 AND qty > 0', [uid]); return Object.fromEntries(r.rows.map((x) => [x.item, x.qty])); }
+  async addInv(uid, item, n) { await this.q('INSERT INTO eco_inv (user_id, item, qty) VALUES ($1,$2,$3) ON CONFLICT (user_id, item) DO UPDATE SET qty = eco_inv.qty + EXCLUDED.qty', [uid, item, n]); }
+  async clearInv(uid, items) { for (const it of items) await this.q('UPDATE eco_inv SET qty = 0 WHERE user_id = $1 AND item = $2', [uid, it]); }
+  async best(uid, race) { const r = await this.q('SELECT ms FROM eco_best WHERE user_id = $1 AND race = $2', [uid, race]); return r.rows[0] ? r.rows[0].ms : null; }
+  async setBest(uid, race, ms) { await this.q('INSERT INTO eco_best (user_id, race, ms) VALUES ($1,$2,$3) ON CONFLICT (user_id, race) DO UPDATE SET ms = LEAST(eco_best.ms, EXCLUDED.ms)', [uid, race, ms]); }
   async txs(uid, n = 10) { const r = await this.q('SELECT type, amount, balance_after, source, at FROM eco_tx WHERE user_id = $1 ORDER BY id DESC LIMIT $2', [uid, n]); return r.rows.map((x) => ({ type: x.type, amount: Number(x.amount), after: Number(x.balance_after), source: x.source })); }
 }
 
@@ -84,6 +100,15 @@ class MemStore {
     const r = this.lock.then(run); this.lock = r.catch(() => {}); return r;   // serialised like a DB transaction
   }
   async setOutfit(uid, outfit) { const x = this.p.get(uid); if (x) x.outfit = outfit; }
+  async pay(uid, amount, xp, type, source) { const x = this.p.get(uid); x.cash += amount; x.xp += xp; x.earned += amount; this.t.push({ uid, type, amount, after: x.cash, source }); return x.cash; }
+  async debit(uid, amount, type, source) { const x = this.p.get(uid); if (!x || x.cash < amount) return null; x.cash -= amount; x.spent += amount; this.t.push({ uid, type, amount: -amount, after: x.cash, source }); return x.cash; }
+  async daily(uid, day) { return { ...((this.d || (this.d = new Map())).get(uid + '|' + day) || {}) }; }
+  async setDaily(uid, day, data) { (this.d || (this.d = new Map())).set(uid + '|' + day, { ...data }); }
+  async inv(uid) { const m = (this.iv || (this.iv = new Map())).get(uid) || {}; return Object.fromEntries(Object.entries(m).filter(([, q]) => q > 0)); }
+  async addInv(uid, item, n) { const iv = this.iv || (this.iv = new Map()); const m = iv.get(uid) || {}; m[item] = (m[item] || 0) + n; iv.set(uid, m); }
+  async clearInv(uid, items) { const m = (this.iv || (this.iv = new Map())).get(uid) || {}; for (const it of items) m[it] = 0; }
+  async best(uid, race) { return ((this.b || (this.b = new Map())).get(uid + '|' + race)) || null; }
+  async setBest(uid, race, ms) { const b = this.b || (this.b = new Map()), k = uid + '|' + race, o = b.get(k); b.set(k, o ? Math.min(o, ms) : ms); }
   async txs(uid, n = 10) { return this.t.filter((x) => x.uid === uid).slice(-n).reverse().map(({ type, amount, after, source }) => ({ type, amount, after, source })); }
 }
 

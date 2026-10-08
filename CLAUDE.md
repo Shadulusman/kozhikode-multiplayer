@@ -66,6 +66,12 @@
 - Full map: `BigMap` (M, or tap the minimap): drag/wheel/pinch, tap a place/marker or anywhere for a waypoint (`Eco.setWaypoint`); the GPS route (`Eco.route`, road-graph Dijkstra from `Buses.path`) serves both missions and waypoints.
 - Auto-rickshaw fares: spot kind `auto` (Railway pre-paid stand, 3 drivable autos appended to SPAWN_VEH there). Server requires `p.vt==='auto'` (client sends vehicle type in state) and seat 0 for pickup and drop; fare ₹100–450 + 25% fast bonus, tx type `FARE`. Passenger NPC waits at pickup then rides seat 1 (`Eco.passenger`).
 - Courier runs: `courier` spot (Malabar Express Courier, Palayam): 3 drops chosen nearest-first (`m.drops`, `m.di`), intermediate stops advance on arrival, one payout at the end (₹300 + 0.2/m, +25% in time), tx `COURIER`. Test: `node test/courier-e2e.js`.
+- Daily goals (`DAILY` in economy.js): per Kerala day, progress in `eco_daily`, bonus paid automatically once (`DAILY_BONUS`). Shown in wallet → Today.
+- Fishing: `fishing` spots (beach, Beypore). `cast` → server picks bite time; `reel` accepted from 0.4 s early to 2.2 s late; fish rarity rolled server-side into `eco_inv`; sell at `fishmarket` (`FISH_SALE`).
+- Races: `race` spots + `RACES` (Calicut City Sprint: Mananchira → S.M. Street → Railway). Must be driving; ₹200 entry via `store.debit` (`RACE_ENTRY`); 3 s countdown; checkpoints reuse the multi-drop logic; prize by time vs par (`RACE_PRIZE`); personal best in `eco_best`.
+- Nazeer texts: every 90 s (`ECO_OFFER_MS`) a free player with ≥2 jobs may get an `offer` card; `offerAccept` starts the job from anywhere (pickup at Nazeer's).
+- Wallet panel tabs: Bank (balance, vehicles, fish, transactions), Jobs (all spots, distance, GPS), Today (daily goals). These live in the HUD, not the partner's phone.js; moving them into phone apps needs coordination.
+- Test: `node test/activities-e2e.js`.
 - Used cars: Malabar Used Cars near HiLITE (`cars` spot): ₹35k–₹1.4L, showroom vehicles with price tags outside every dealer, star stats in shop. Garage limit 3 vehicles (`GARAGE_SLOTS`). Bought vehicles carry a fictional `KL 11 XX 1234` plate (stable hash of owner+item) shown front/back.
 - Tests: `npm test` (store, incl. pg-mem Postgres), `node test/economy-e2e.js`, `node test/auto-e2e.js` against a running server (full loop + exploits).
 

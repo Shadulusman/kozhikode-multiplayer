@@ -49,7 +49,7 @@ let eco = null;                  // wallet/jobs/shops; keyed by the phone accoun
 phoneStore.init().then(async () => {
   phone = createPhone({ store: phoneStore, send: (ws, o) => send(ws, o) });
   const ecoStore = createEcoStore(phoneStore); await ecoStore.init();
-  eco = createEconomy({ store: ecoStore, send: (ws, o) => send(ws, o), broadcast: (o) => { if (o.t === 'pv') vehicles.delete(o.vid); broadcast(o); } });   // a respawned/removed bought vehicle starts with a clean pose/occupancy
+  eco = createEconomy({ store: ecoStore, players: () => players.values(), send: (ws, o) => send(ws, o), broadcast: (o) => { if (o.t === 'pv') vehicles.delete(o.vid); broadcast(o); } });   // a respawned/removed bought vehicle starts with a clean pose/occupancy
   console.log('Economy ready (' + ecoStore.kind + ' store)');
   console.log('Phone system ready (' + phoneStore.kind + ' store)' + (phoneStore.kind === 'memory' ? ' — numbers are NOT permanent, set DATABASE_URL' : ''));
 }).catch((e) => console.error('Phone system disabled:', e && e.message));
