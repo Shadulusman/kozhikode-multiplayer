@@ -2117,7 +2117,7 @@ const VEH = {
   auto:{L:2.7,W:1.35,H:1.75,wb:1.9,wr:0.22,vmax:16,acc:3.6,brk:11,grip:7,three:true},
   goods:{L:3.4,W:1.5,H:1.85,wb:2.1,wr:0.24,vmax:16,acc:3.2,brk:11,grip:7,three:true},
   truck:{L:5.4,W:2.05,H:2.5,wb:3.0,wr:0.4,vmax:22,acc:3.2,brk:12,grip:7},
-  bus:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5,vmax:24,acc:3.2,brk:12,grip:7}, busK:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busG:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busB:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busM:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5},
+  bus:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5,vmax:24,acc:3.2,brk:12,grip:7}, busR:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busK:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busG:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busB:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5}, busM:{L:10.6,W:2.5,H:3.15,wb:5.9,wr:0.5},
   scooter:{L:1.8,W:0.7,H:1.15,wb:1.25,wr:0.24,vmax:23,acc:5.2,brk:13,grip:9,two:true}, bike:{L:2.05,W:0.75,H:1.15,wb:1.36,wr:0.31,vmax:31,acc:7.6,brk:15,grip:9,two:true},
   scooterP:{L:1.8,W:0.7,H:1.15,wr:0.24}, bikeP:{L:2.05,W:0.75,H:1.15,wr:0.31}, scooterR:{L:1.8,W:0.7,H:1.7,wr:0.24}, bikeR:{L:2.05,W:0.75,H:1.7,wr:0.31},
 };
@@ -2203,9 +2203,13 @@ function carBody(b,d,paint,S){ // S: belt, hood, boot, wsRake, rearRake, gc
     b.cyl(0,H,rt+0.12,0.008,0.012,0.3,blk,4);
     if(S.rails) for(const sx of[-1,1]) b.box(sx*(W/2-0.14),H+0.015,(ft+rt)/2,0.035,0.035,ft-rt-0.12,chrome); }
 }
-const BUSLIV={ busK:['#c8102e','#f2c200','#c8102e','#f1ead6'], bus:['#c8102e','#f2c200','#c8102e','#f1ead6'], busG:['#2e9d48','#ffffff','#258a3e','#f4f4f4'], busB:['#1f6fd0','#ffffff','#1a5fb4','#f4f4f4'], busM:['#7a1f2b','#f1ead6','#6a1a25','#f4f4f4'] };
+const BUSLIV={ busR:['#c8102e','#f2c200','#c8102e','#f1ead6'], busK:['#c8102e','#f2c200','#c8102e','#f1ead6'], bus:['#c8102e','#f2c200','#c8102e','#f1ead6'], busG:['#2e9d48','#ffffff','#258a3e','#f4f4f4'], busB:['#1f6fd0','#ffffff','#1a5fb4','#f4f4f4'], busM:['#7a1f2b','#f1ead6','#6a1a25','#f4f4f4'] };
 function busBody(b,d,type){ const lv=BUSLIV[type].map(C), L=d.L,W=d.W, hl=L/2;
-  b.mesh(profGeoR([[-hl,0.5],[hl-0.12,0.5],[hl,0.95],[hl,2.55],[hl-0.28,3.1],[-hl,3.1]],W,0.32,0.1),IDM,lv[0]);
+  if(type==='busR'){ /* hollow route bus: waist-down body, roof slab, floor + seats; the window band is open so passengers show through the glass */
+    b.mesh(profGeoR([[-hl,0.5],[hl-0.12,0.5],[hl,0.95],[hl,1.52],[-hl,1.52]],W,0.2,0.08),IDM,lv[0]); b.mesh(profGeoR([[-hl,2.42],[hl,2.42],[hl,2.55],[hl-0.28,3.1],[-hl,3.1]],W,0.2,0.08),IDM,lv[0]);
+    b.box(0,0.9,0,W-0.2,0.06,L-0.4,C('#5a5048')); for(let z=hl-2.6;z>-hl+1;z-=1.05) for(const x of[-0.62,0.62]){ b.box(x,0.96,z-0.1,0.95,0.42,0.42,C('#3d5a7a')); b.box(x,1.38,z-0.32,0.95,0.6,0.08,C('#3d5a7a')); }
+    for(const x of[-W/2+0.05,W/2-0.05]) for(let z=-hl+0.5;z<hl-0.6;z+=1.32) b.box(x,1.52,z,0.08,0.9,0.12,lv[2]); }
+  else b.mesh(profGeoR([[-hl,0.5],[hl-0.12,0.5],[hl,0.95],[hl,2.55],[hl-0.28,3.1],[-hl,3.1]],W,0.32,0.1),IDM,lv[0]);
   for(const sx of[-1,1]){ const x=sx*(W/2+0.012); b.box(x,1.24,0,0.03,0.26,L-0.3,lv[1]); b.box(x,1.52,-0.15,0.03,0.9,L-0.9,GLASSC()); for(let z=-hl+0.5;z<hl-0.6;z+=1.32) b.box(x*1.004,1.5,z,0.035,0.94,0.12,lv[2]); b.box(x,2.46,0,0.03,0.2,L-0.3,lv[2]); }
   b.box(0,2.72,0,W-0.2,0.4,L-0.5,lv[3]); // roof
   b.box(0,1.45,hl+0.01,W-0.3,1.1,0.05,GLASSC()); b.box(0,2.6,hl-0.02,2.0,0.42,0.1,C('#f6f6f0')); b.box(0,1.6,-hl-0.01,W-0.5,0.8,0.04,GLASSC());
@@ -2593,6 +2597,62 @@ const Peds = {
   obstacles(out,px,pz){ for(const p of this.list){ if(p.act&&Math.abs(p.x-px)<160&&Math.abs(p.z-pz)<160) out.push(p); } },
 };
 
+
+/* =====================================================================
+   Route buses (KSRTC). Every client computes the same bus positions from the server clock (Net.tOff), so
+   everyone sees the same bus without extra traffic. Routes follow the road graph between TRAVEL places; buses
+   wait at each end for DWELL seconds, show the destination on the board, carry a brown-uniform driver and a
+   random number of seated passengers, and players can board / get off at stops (E).
+   ===================================================================== */
+const Buses={ obs:[], list:[], routes:[], SPEED:9, DWELL:25, seatDrv:null, pool:null,
+  ROUTES:[['Mavoor Road · KSRTC','Kozhikode Beach'],['Mananchira Square','Medical College'],['HiLITE Mall','Palayam'],['Railway Station','Ramanattukara']],
+  now(){ return (Date.now()+(Net.tOff||0))/1000; },
+  nearestNode(x,z){ let b=null,bd=1e9; for(const id in NODES){ const n=NODES[id]; if(!n.edges.some(e=>e.type!=='ped')) continue; const d=Math.hypot(n.x-x,n.z-z); if(d<bd){ bd=d; b=id; } } return b; },
+  path(a,b){ const dist={}, prev={}, done=new Set(); dist[a]=0; const Q=[a];
+    while(Q.length){ Q.sort((p,q)=>dist[p]-dist[q]); const u=Q.shift(); if(done.has(u)) continue; done.add(u); if(u===b) break;
+      for(const e of NODES[u].edges){ if(e.type==='ped') continue; const v=String(e.a)===String(u)?String(e.b):String(e.a); const nd=dist[u]+e.len; if(dist[v]===undefined||nd<dist[v]){ dist[v]=nd; prev[v]={u,e}; Q.push(v); } } }
+    if(dist[b]===undefined) return null; const seq=[]; for(let v=b; v!==a; v=prev[v].u) seq.unshift(prev[v]); return seq; },
+  build(scene){ const T=n=>TRAVEL.find(t=>t[0]===n);
+    for(const [an,bn] of this.ROUTES){ const A=T(an), B=T(bn); if(!A||!B) continue; const na=this.nearestNode(A[1],A[2]), nb=this.nearestNode(B[1],B[2]); const seq=this.path(String(na),String(nb)); if(!seq||!seq.length) continue;
+      const pts=[]; for(const {u,e} of seq){ let ps=e.pts.map(p=>[p.x,p.z]); if(String(e.a)!==String(u)) ps.reverse(); for(const p of ps){ const l=pts[pts.length-1]; if(!l||Math.hypot(l[0]-p[0],l[1]-p[1])>0.5) pts.push(p); } }
+      // keep left: offset every point to the left of travel by a lane
+      const off=[], cum=[0]; for(let i=0;i<pts.length;i++){ const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)], dx=b[0]-a[0], dz=b[1]-a[1], l=Math.hypot(dx,dz)||1; off.push([dz/l,-dx/l]); if(i) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1])); }
+      const L=cum[cum.length-1], aName=(areaAt(A[1],A[2])||[an,an]), bName=(areaAt(B[1],B[2])||[bn,bn]);
+      this.routes.push({pts,off,cum,L,ends:[{en:an,ml:aName[1]},{en:bn,ml:bName[1]}],T:2*(L/this.SPEED+this.DWELL)}); }
+    this.routes.forEach((r,ri)=>{ for(let k=0;k<2;k++) this.list.push(this.mkBus(scene,r,ri,k)); });
+    if(CHAR.ready){ this.pool=[]; for(let i=0;i<16;i++){ const a=makeAvatar({o:i%3,shirt:pick(['#f5f5f5','#1565c0','#c2185b','#2e7d32','#f9a825','#6a1b9a','#90a4ae','#d84315']),pants:pick(['#263238','#212121','#37474f','#4e342e']),skin:pick(['#8d5a3b','#7a4a2e','#a06a45','#6b3f26'])}); a.root.visible=false; scene.add(a.root); this.pool.push({a,ctl:{av:a.av,speed:0,air:0,seat:1},bus:null}); } } },
+  boardTex(end){ const c=cv(512,128), g=c.getContext('2d'); g.fillStyle='#111'; g.fillRect(0,0,512,128); g.fillStyle='#ffb300'; g.textAlign='center'; g.font='700 50px '+FONT_ML; g.fillText(end.ml,256,62); g.font='700 30px '+FONT_EN3; g.fillText(end.en.toUpperCase(),256,108); const t=new THREE.CanvasTexture(c); t.encoding=THREE.sRGBEncoding; return t; },
+  mkBus(scene,r,ri,k){ const d=VEH.busK, hl=d.L/2, g=new THREE.Group(); g.rotation.order='YXZ'; const sp=splitGlass(vehGeo('busR',null,false));
+    g.add(new THREE.Mesh(sp.body,MAT.veh)); g.children[0].castShadow=true; if(!MAT.vglass) MAT.vglass=new THREE.MeshStandardMaterial({vertexColors:true,transparent:true,opacity:0.22,roughness:0.12,metalness:0.05,envMapIntensity:0.45,depthWrite:false,side:THREE.DoubleSide});
+    const gl=new THREE.Mesh(sp.glass,MAT.vglass); gl.renderOrder=2; g.add(gl); g.add(new THREE.Mesh(busAdGeo('busK'),MAT.ad));
+    const boards=r.ends.map(e=>new THREE.MeshBasicMaterial({map:this.boardTex(e)})), front=new THREE.Mesh(new THREE.PlaneGeometry(1.84,0.42),boards[1]); front.position.set(0,2.82,hl+0.05); g.add(front);
+    const side=new THREE.Mesh(new THREE.PlaneGeometry(2.2,0.52),boards[1]); side.position.set(-d.W/2-0.04,2.2,2.6); side.rotation.y=-PI/2; g.add(side);
+    g.visible=false; scene.add(g);
+    let drv=null; if(CHAR.ready){ drv=makeAvatar({o:1,shirt:'#7a5230',pants:'#6b4a2b',skin:pick(['#8d5a3b','#6b3f26'])}); drv.root.position.set(-0.75,0.45,hl-1.4); g.add(drv.root); }
+    const seats=[]; for(let z=hl-2.6;z>-hl+1;z-=1.05) for(const x of[-0.62,0.62]) seats.push([x,0.52,z-0.1]);
+    return {r,ri,k,g,front,side,boards,drv,drvCtl:drv?{av:drv.av,speed:0,air:0,seat:0}:null,seats,nPass:RI(2,seats.length-2),seed:RI(0,999),x:0,z:0,h:0,dwell:false,stop:0,dir:0,pass:[],id:ri*2+k}; },
+  sample(r,s,dir){ const c=r.cum; let i=1; while(i<c.length-1&&c[i]<s) i++; const t=(s-c[i-1])/((c[i]-c[i-1])||1), a=r.pts[i-1], b=r.pts[i], oa=r.off[i-1], ob=r.off[i], sg=dir?-1:1, lane=3.0;
+    const x=lerp(a[0],b[0],t)+sg*lane*lerp(oa[0],ob[0],t), z=lerp(a[1],b[1],t)+sg*lane*lerp(oa[1],ob[1],t), dx=(b[0]-a[0])*(dir?-1:1), dz=(b[1]-a[1])*(dir?-1:1); return [x,z,Math.atan2(dx,dz)]; },
+  state(b){ const r=b.r, run=r.L/this.SPEED, t=(((this.now()+b.k*r.T/2+b.ri*37)%r.T)+r.T)%r.T; // 0..run forward, dwell at B, back, dwell at A
+    if(t<run) return {s:t*this.SPEED,dir:0,dwell:false,at:1}; if(t<run+this.DWELL) return {s:r.L,dir:0,dwell:true,at:1};
+    if(t<2*run+this.DWELL) return {s:r.L-(t-run-this.DWELL)*this.SPEED,dir:1,dwell:false,at:0}; return {s:0,dir:1,dwell:true,at:0}; },
+  update(dt,px,pz,ob){ let poolI=0; const near=[];
+    for(const b of this.list){ const st=this.state(b), [x,z,h]=this.sample(b.r,st.s,st.dwell?1-st.at:st.dir); b.dwell=st.dwell; b.stop=st.at; const nd=st.dwell?1-st.at:1-st.dir; // board shows where it is heading next
+      if(b.dir!==nd||!b.boardSet){ b.dir=nd; b.boardSet=true; b.front.material=b.boards[nd]; b.side.material=b.boards[nd]; }
+      b.h+=b.h===0?h:angDiff(b.h,h)*Math.min(1,dt*3); b.x=x; b.z=z; const y=groundY(x,z,3); b.g.position.set(x,y,z); b.g.rotation.y=b.h; b.y=y;
+      const d=Math.hypot(x-px,z-pz); b.g.visible=d<700; if(d<120){ const fx=Math.sin(b.h), fz=Math.cos(b.h); for(const o of[-4,-2,0,2,4]) ob.push({x:x+fx*o,z:z+fz*o,y,r:1.4}); }
+      if(b.drv&&d<120){ avAnimate(b.drvCtl,dt,true); } if(d<70) near.push([d,b]); }
+    if(this.pool){ near.sort((a,b)=>a[0]-b[0]); for(const s of this.pool){ s.used=false; }
+      for(const [,b] of near){ const n=Math.min(b.nPass,b.seats.length); for(let i=0;i<n&&poolI<this.pool.length;i++){ const sIdx=(i*7+b.seed)%b.seats.length; if(Player.bus&&Player.bus.b===b&&Player.bus.seat===sIdx) continue; const s=this.pool[poolI++]; s.used=true;
+          if(s.bus!==b||s.seat!==sIdx){ b.g.add(s.a.root); s.a.root.position.set(...b.seats[sIdx]); s.a.root.rotation.set(0,0,0); s.bus=b; s.seat=sIdx; } s.a.root.visible=true; avAnimate(s.ctl,dt,true); } }
+      for(const s of this.pool) if(!s.used){ s.a.root.visible=false; } } },
+  nearestStop(px,pz){ for(const b of this.list){ if(!b.dwell) continue; if(Math.hypot(b.x-px,b.z-pz)<7) return b; } return null; },
+  freeSeat(b){ const used=new Set(); for(let i=0;i<b.nPass;i++) used.add((i*7+b.seed)%b.seats.length); for(const r of Net.remote.values()) if(r.bus&&r.bus.b===b) used.add(r.bus.seat); for(let i=b.seats.length-1;i>=0;i--) if(!used.has(i)) return i; return b.seats.length-1; },
+  attach(hs,b,seat){ b.g.add(hs.g); hs.g.position.set(...b.seats[seat]); hs.g.rotation.set(0,0,0); hs.g.visible=true; if(hs.J&&hs.J.helmet) hs.J.helmet.visible=false; },
+  board(b){ const P=Player, seat=this.freeSeat(b); P.bus={b,seat}; this.attach(P,b,seat); P.speed=0; UI.toast('On the bus to '+b.r.ends[b.dir].en+' — E to get off at a stop'); },
+  alight(){ const P=Player, b=P.bus.b, fx=Math.sin(b.h), fz=Math.cos(b.h), rx=fz, rz=-fx; Game.scene.add(P.g); P.bus=null; P.x=b.x+rx*2.4+fx*2.5; P.z=b.z+rz*2.4+fz*2.5; P.y=groundY(P.x,P.z,b.y+1); P.h=b.h; P.g.position.set(P.x,P.y,P.z); P.g.rotation.y=P.h; UI.toast('Arrived: '+b.r.ends[b.stop].en); },
+  byId(id){ return this.list.find(b=>b.id===id); },
+};
 /* =====================================================================
    PlayerController + CharacterAnimator + CameraController
    ===================================================================== */
@@ -2706,10 +2766,10 @@ const Net = {
     ws.onerror=()=>{}; },
   msg(m){
     switch(m.t){
-      case 'w': this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
+      case 'w': if(m.now) this.tOff=m.now-Date.now(); this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
       case 'j': this.info[m.id]={name:m.name,look:m.look}; this.total=m.total; UI.toast(m.name+' joined'); break;
       case 'l': { this.total=m.total; const r=this.remote.get(m.id); if(r){ this.drop(r); this.remote.delete(m.id); } delete this.info[m.id]; break; }
-      case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.tsn=a[10]||0; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
+      case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.tsn=a[10]||0; r.trb=a[11]===undefined?-1:a[11]; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
       case 'c': this.addChat(m.name,m.text,m.id===this.id); break;
       case 'sig': this.onSig(m.from,m.d); break;
       case 'ph': if(window.Phone) Phone.onMsg(m); break;
@@ -2726,7 +2786,7 @@ const Net = {
   clearRemotes(){ for(const r of this.remote.values()) this.drop(r); this.remote.clear(); this.info={}; },
   sendState(){ const ws=this.ws; if(!ws||ws.readyState!==1) return; const P=Player, v=P.veh, q=n=>Math.round(n*100)/100;
     const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:PVEH.indexOf(v),sn:P.seat,vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,sn:0,vf:0,st:0};
-    ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st)})); },
+    ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st),rb:P.bus?P.bus.b.id*100+P.bus.seat:-1})); },
   update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
     const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
@@ -2737,7 +2797,8 @@ const Net = {
       if(v&&r.sn!==0){ if(r.mounted){ hs.g.visible=true; hs.animate(dt,true); } else hs.g.visible=false; }
       else if(v){ v.remote=r.id; v.x=r.x; v.y=r.y; v.z=r.z; v.h=r.h; v.vx=v.vz=0; v.vf=r.vf; v.steer=r.st; v.pitch=0; v.roll=0; v.spin+=r.vf/v.d.wr*dt; for(const w of v.wheels){ w.m.rotation.x=v.spin; if(w.front) w.piv.rotation.y=v.steer; } v.sync();
         if(r.mounted){ hs.g.visible=true; hs.animate(dt,true); } else hs.g.visible=false; }
-      else { hs.g.visible=true; hs.g.position.set(r.x,r.y,r.z); hs.g.rotation.y=r.h; hs.animate(dt,false); }
+      else if((r.trb|0)>=0&&Buses.byId(Math.floor(r.trb/100))){ const b=Buses.byId(Math.floor(r.trb/100)), seat=r.trb%100; if(!r.bus||r.bus.b!==b||r.bus.seat!==seat){ r.bus={b,seat}; Buses.attach(hs,b,seat); } hs.animate(dt,true); }
+      else { if(r.bus){ Game.scene.add(hs.g); r.bus=null; } hs.g.visible=true; hs.g.position.set(r.x,r.y,r.z); hs.g.rotation.y=r.h; hs.animate(dt,false); }
       const d=Math.hypot(r.x-Player.x,r.z-Player.z); _nv.set(r.x,r.y+(v&&!v.d.two?(v.d.H+0.35):2.05),r.z).project(cam); const vis=_nv.z<1&&d<60&&Math.abs(_nv.x)<1.15&&Math.abs(_nv.y)<1.15;
       r.lab.style.display=vis?'block':'none'; if(vis){ r.lab.style.transform='translate(-50%,-100%) translate('+((_nv.x*0.5+0.5)*innerWidth)+'px,'+((-_nv.y*0.5+0.5)*innerHeight)+'px)'; r.lab.style.opacity=clamp(1.5-d/45,0.3,1); } } },
   initAudio(){ if(this.actx) return; try{ this.actx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} },
@@ -2799,6 +2860,7 @@ const Player = {
   },
   pushFrom(cx,cz,cr){ const dx=this.x-cx, dz=this.z-cz, rr=cr+0.34, d2=dx*dx+dz*dz; if(d2<rr*rr&&d2>1e-6){ const d=Math.sqrt(d2); this.x+=dx/d*(rr-d); this.z+=dz/d*(rr-d); } },
   update(dt,inp,yaw){
+    if(this.bus){ const b=this.bus.b, w=new THREE.Vector3(); this.g.getWorldPosition(w); this.x=w.x; this.y=b.y; this.z=w.z; this.h=b.h; this.speed=0; this.onGround=true; this.animate(dt,true); return; }
     if(this.veh){ const v=this.veh; this.x=v.x; this.y=v.y; this.z=v.z; this.h=v.h; this.speed=0; this.onGround=true; if(v.d.two||this.g.parent===v.g) this.animate(dt,true); return; }
     const fx=-Math.sin(yaw), fz=-Math.cos(yaw), rx=Math.cos(yaw), rz=-Math.sin(yaw);
     let mx=fx*inp.fwd+rx*inp.right, mz=fz*inp.fwd+rz*inp.right; const ml=Math.hypot(mx,mz); if(ml>1){ mx/=ml; mz/=ml; }
@@ -3046,7 +3108,7 @@ const UI = { area:null, titleT:0, toastT:0, mapOn:true, frame:0,
     if(this.titleT>0){ this.titleT-=dt; if(this.titleT<=0) $('title').classList.remove('on'); }
     if(this.toastT>0){ this.toastT-=dt; if(this.toastT<=0) $('toast').classList.remove('on'); }
     const sp=$('speed'); if(v){ sp.classList.add('on'); if(this.frame%4===0) $('kmh').textContent=Math.round(Math.abs(v.vf)*3.6); } else sp.classList.remove('on');
-    let pr=''; if(Game.playing){ if(v){ if(Math.abs(v.vf)<4) pr='<kbd>E</kbd> Exit vehicle'; } else { const nv=P.nearestVehicle(); if(nv) pr='<kbd>E</kbd> Enter '+VNAME[nv.type]; } }
+    let pr=''; if(Game.playing&&P.bus){ const b=P.bus.b; pr=b.dwell?'<kbd>E</kbd> Get off · '+b.r.ends[b.stop].en:'Next stop: '+b.r.ends[b.dir].en; } else if(Game.playing&&!v&&Buses.nearestStop(P.x,P.z)){ const b=Buses.nearestStop(P.x,P.z); pr='<kbd>E</kbd> Board bus to '+b.r.ends[b.dir].en; } else if(Game.playing){ if(v){ if(Math.abs(v.vf)<4) pr='<kbd>E</kbd> Exit vehicle'; } else { const nv=P.nearestVehicle(); if(nv) pr='<kbd>E</kbd> Enter '+VNAME[nv.type]; } }
     if(pr!==this.pr){ this.pr=pr; const p=$('prompt'); p.innerHTML=pr; p.classList.toggle('on',!!pr); }
     if(this.mapOn&&this.frame%2===0) this.drawMap(x,z,Cam.yaw,P);
   },
@@ -3087,14 +3149,14 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     await step(0.62,'Filling in the neighbourhoods…'); fillBack();
     await step(0.72,'Planting coconut palms…'); fillVegetation(); fillStreetProps();
     await step(0.82,'Pouring the Arabian Sea…'); buildGround(scene); finalizeDecals(scene); this.cables=buildCables(scene); this.stats=finalizeBatches(scene); Env.init(scene,renderer,camera);
-    await step(0.92,'Starting the buses…'); spawnPlayerVehicles(scene); await loadChars(); Player.init(scene); Traffic.init(scene,84); Train.init(scene); Peds.init(scene); Input.init(canvas);
+    await step(0.92,'Starting the buses…'); spawnPlayerVehicles(scene); await loadChars(); Player.init(scene); Traffic.init(scene,84); Buses.build(scene); Train.init(scene); Peds.init(scene); Input.init(canvas);
     this.focus={x:-525,y:0,z:0}; Traffic.refreshCands(this.focus.x,this.focus.z); Traffic.want=Traffic.target; for(let i=0;i<500&&Traffic.count()<Traffic.target;i++) Traffic.spawn(this.focus.x,this.focus.z,camera,true);
     this.setQuality(this.autoQuality(),true);
     updateLOD(camera); UI.progress(1,''); UI.ready(); this.last=performance.now(); this.manual=location.search.indexOf('manual')>=0; window.__ready=true; if(this.manual) this.tick(0.03,true); else requestAnimationFrame(t=>this.loop(t));
   },
   start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); this.teleport(START.x,START.z,START.h,true); UI.area=null; document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); },
   /** carry: a driver travels in their vehicle (passengers go along); anyone else, or carry=false, gets out first */
-  teleport(x,z,h,quiet,carry){ const v=Player.veh;
+  teleport(x,z,h,quiet,carry){ if(Player.bus){ Game.scene.add(Player.g); Player.bus=null; } const v=Player.veh;
     if(v&&carry&&Player.seat===0){ v.x=x; v.z=z; v.y=groundY(x,z,2); v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.sync(); Player.x=x; Player.z=z; Player.y=v.y; Player.h=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); return; }
     if(v) Player.exit(this.scene); Player.x=x; Player.z=z; Player.y=groundY(x,z,3); Player.h=h; Player.vx=Player.vz=Player.vy=0; Player.g.position.set(x,Player.y,z); Player.g.rotation.y=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); },
   refreshWorld(x,z,quiet){
@@ -3127,8 +3189,11 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
         if(this.exiting){ inp={thr:0,steer:0,hb:true}; if(v.speed<1.3){ v.vx=v.vz=0; P.exit(this.scene); this.exiting=false; UI.fade(); } }
         else inp={thr:(K.KeyW?1:0)-(K.KeyS?1:0),steer:(K.KeyA?1:0)-(K.KeyD?1:0),hb:!!K.Space};
         if(P.veh){ v.update(dt,P.seat>0?null:inp); if(v.impact>2.5){ Cam.shake=Math.min(0.5,v.impact*0.035); Audio_.thud(v.impact*0.06); } v.impact=0; } }
+      else if(P.bus){ if(eKey){ if(P.bus.b.dwell){ Buses.alight(); UI.fade(); } else UI.toast('Wait for the next stop'); } }
+      else if(eKey&&Buses.nearestStop(P.x,P.z)){ Buses.board(Buses.nearestStop(P.x,P.z)); UI.fade(); }
       else if(eKey){ const nv=P.nearestVehicle(); if(nv){ P.enter(nv,this.scene); UI.fade(); Cam.last=-10; } }
       for(const v of PVEH){ if(v!==P.veh) v.update(dt,null); }
+      Buses.obs.length=0; Buses.update(dt,P.x,P.z,Buses.obs);
       P.update(dt,{fwd:(K.KeyW?1:0)-(K.KeyS?1:0),right:(K.KeyD?1:0)-(K.KeyA?1:0),run:!!(K.ShiftLeft||K.ShiftRight),jump:Input.once('Space')},Cam.yaw);
       if(P.edge>0){ P.edge-=dt; if(!this.edgeShown){ this.edgeShown=true; UI.toast('That is the edge of miniature Kozhikode'); setTimeout(()=>this.edgeShown=false,4000); } }
       this.focus.x=P.x; this.focus.y=P.y; this.focus.z=P.z; Cam.update(dt,cam,P);
@@ -3136,7 +3201,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
       this.introT+=dt; const a=this.introT*0.045+0.6, cx=-525, cz=0, r=215; cam.position.set(cx+Math.cos(a)*r,62+Math.sin(this.introT*0.1)*8,cz+Math.sin(a)*r); cam.lookAt(cx-20,6,cz); _camF.x=-Math.cos(a); _camF.z=-Math.sin(a); }
     Input.end();
     const f=this.focus, ob=this.obst; ob.length=0; if(this.playing){ if(P.veh){ const v=P.veh, fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else ob.push({x:P.x,z:P.z,y:P.y,r:0.4}); }
-    Peds.obstacles(ob,f.x,f.z);
+    Peds.obstacles(ob,f.x,f.z); for(const o of Buses.obs) ob.push(o);
     Traffic.update(dt,f.x,f.z,cam,ob); Train.update(dt); Peds.update(dt,f.x,f.z,this.playing?P.veh:null,cam); Net.update(dt);
     Env.update(dt,cam,f.x,f.y,f.z); if(this.frame%4===0) updateLOD(cam);
     if(this.playing){ UI.update(dt,P); if(this.frame%6===0) Audio_.update(dt*6,P,Traffic.count(),zoneAt(P.x,P.z)); }

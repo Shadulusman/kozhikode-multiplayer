@@ -77,10 +77,10 @@ wss.on('connection', (ws) => {
       if (p) return;
       if (players.size >= MAX_PLAYERS) { send(ws, { t: 'full' }); return ws.close(); }
       const id = String(nextId++);
-      p = { id, ws, name: cleanName(m.name, id), look: cleanLook(m.look), x: 0, y: 0, z: 0, h: 0, sp: 0, og: 1, vi: -1, sn: 0, vf: 0, st: 0 };
+      p = { id, ws, name: cleanName(m.name, id), look: cleanLook(m.look), x: 0, y: 0, z: 0, h: 0, sp: 0, og: 1, vi: -1, sn: 0, vf: 0, st: 0, rb: -1 };
       players.set(id, p);
       send(ws, {
-        t: 'w', id, total: players.size, ice: ICE,
+        t: 'w', id, now: Date.now(), total: players.size, ice: ICE,
         players: [...players.values()].filter(q => q !== p).map(q => [q.id, q.name, q.look]),
         vehicles: [...vehicles.entries()].map(([vi, v]) => [vi, v.x, v.y, v.z, v.h, v.occ]),
       });
@@ -95,7 +95,7 @@ wss.on('connection', (ws) => {
     if (m.t === 's') {
       const x = num(m.x), y = num(m.y, 1e4), z = num(m.z), h = num(m.h, 100), sp = num(m.sp, 200), vf = num(m.vf, 200), st = num(m.st, 10);
       if (x === null || y === null || z === null || h === null) return;
-      p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0;
+      p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0; p.rb = Number.isInteger(m.rb) && m.rb >= -1 && m.rb < 100000 ? m.rb : -1;
       const vi = Number.isInteger(m.vi) && m.vi >= 0 && m.vi < 500 ? m.vi : -1;
       const sn = Number.isInteger(m.sn) && m.sn >= 0 && m.sn < 8 ? m.sn : 0;
       if (vi !== p.vi || (vi >= 0 && sn !== p.sn)) {
@@ -144,7 +144,7 @@ setInterval(() => {
     for (const q of all) {
       if (q === p) continue;
       const dx = q.x - p.x, dz = q.z - p.z;
-      if (dx * dx + dz * dz < AOI * AOI || (p.vi >= 0 && q.vi === p.vi)) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st, q.sn]);
+      if (dx * dx + dz * dz < AOI * AOI || (p.vi >= 0 && q.vi === p.vi)) arr.push([q.id, q.x, q.y, q.z, q.h, q.sp, q.og, q.vi, q.vf, q.st, q.sn, q.rb]);
     }
     send(p.ws, { t: 'p', p: arr });
   }
