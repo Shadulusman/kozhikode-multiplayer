@@ -13,6 +13,11 @@
 - `Traffic` (NPC traffic), `Game` (loop/start), `UI`, `Input`, touch controls IIFE (before `const UI`).
 - `Net` — multiplayer client: snapshots, name tags, chat, vehicle claim/release, voice (WebRTC, `voiceUpdate`).
 
+## Graphics
+- Visual overhaul runs in phases on `shadul-dev` (1 lighting/atmosphere, 2 roads+promenade+ocean, 3 vegetation, 4 vehicles, 5 characters, 6 buildings/shops/props, 7 UI, 8 perf+QA). External CC0 assets may go in `public/assets/` (list source + license per file); code stays in index.html.
+- `Game.QUALITY` presets Low/Medium/High/Ultra (render scale, shadow map size + area, LOD, traffic, peds). `autoQuality()` picks Low/Medium on phones, High on desktop; G cycles and saves to localStorage `kzk_q`.
+- Fog is replaced globally (`THREE.ShaderChunk.fog_fragment`): exponential haze with desaturation; fogNear/fogFar mean start/scale, not hard limits. Default weather = Kerala 5 PM.
+
 ## Multiplayer rules
 - Client sends state ~12 Hz; server sends 10 Hz snapshots within 350 m.
 - Chat radius 30 m, voice connects within 25 m and hangs up past 35 m.
