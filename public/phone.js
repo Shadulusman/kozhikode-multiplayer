@@ -408,6 +408,8 @@
         '<div class="c" id="pc-ans"><button class="ph-round grn" data-act="answer" type="button" aria-label="Answer">' + svg('phone') + '</button><span>Answer</span></div></div></div>' +
         '<button class="ph-home-ind" data-act="home" type="button" aria-label="Home"></button></div></div>';
       document.body.appendChild(root);
+      { const cx = document.createElement('button'); cx.id = 'ph-close'; cx.type = 'button'; cx.setAttribute('aria-label', 'Close phone'); cx.textContent = '\u2715'; root.appendChild(cx);   // touch screens have no P / Esc key
+        cx.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); this.closeUI(); }); }
 
       const fab = document.createElement('button'); fab.id = 'ph-fab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Phone (P)'); fab.innerHTML = svg('phone') + '<b>0</b>'; document.body.appendChild(fab);
       const pill = document.createElement('div'); pill.id = 'ph-pill';
