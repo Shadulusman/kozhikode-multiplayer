@@ -17,6 +17,9 @@
 - Visual overhaul runs in phases on `shadul-dev` (1 lighting/atmosphere, 2 roads+promenade+ocean, 3 vegetation, 4 vehicles, 5 characters, 6 buildings/shops/props, 7 UI, 8 perf+QA). External CC0 assets may go in `public/assets/` (list source + license per file); code stays in index.html.
 - `Game.QUALITY` presets Low/Medium/High/Ultra (render scale, shadow map size + area, LOD, traffic, peds). `autoQuality()` picks Low/Medium on phones, High on desktop; G cycles and saves to localStorage `kzk_q`.
 - Fog is replaced globally (`THREE.ShaderChunk.fog_fragment`): exponential haze with desaturation; fogNear/fogFar mean start/scale, not hard limits. Default weather = Kerala 5 PM.
+- Ground PBR (`groundPBR`, `beachGround`): photo textures from `public/assets/tex`, world-space anti-tiled. Three r128 caches shader programs by `onBeforeCompile.toString()` (no `customProgramCacheKey`), so every patched material variant overrides `toString` with a unique key — do the same for new patched materials or they silently reuse another program.
+- Road dressing: raised concrete kerbs (`eKerb`, batch key `kerb`, visual only — physics/groundY unchanged), edge grime via colour-gradient strips (`eStripG`), asphalt wear in the road shader (tar patches, cracks, oil), worn paint on `MAT.mark`, manholes + drain gratings on art/main roads. Patched materials without a `map` can't use `mapTexelToLinear` — decode sRGB by hand.
+- The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
 ## Multiplayer rules
 - Client sends state ~12 Hz; server sends 10 Hz snapshots within 350 m.

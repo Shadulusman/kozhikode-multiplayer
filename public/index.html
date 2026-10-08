@@ -540,6 +540,63 @@ function signMat(lines, o={}){
   return m;
 }
 
+
+/* ---------- photo-scanned ground surfaces (CC0, ambientCG, see public/assets/CREDITS.md) ----------
+   Mapped in world space (tile metres), sampled twice at different scale/rotation and blended with macro noise so
+   repetition doesn't show; brightness varies over tens of metres; uWet adds puddles in patches; sand gets a wet band near the sea. */
+const GROUND_U={uWet:{value:0}}; let LITE_TEX=false;
+function photoSet(name){ const ld=new THREE.TextureLoader(), mk=(f,srgb)=>{ const t=ld.load('assets/tex/'+name+'_'+f+'.jpg'); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=8; if(srgb) t.encoding=THREE.sRGBEncoding; return t; };
+  return LITE_TEX?{map:mk('col',true)}:{map:mk('col',true),normalMap:mk('nrm',false),roughnessMap:mk('rgh',false)}; }
+function groundPBR(m,set,tile,o){ o=o||{}; Object.assign(m,set); if(set.normalMap) m.normalScale=new THREE.Vector2(o.ns||0.8,o.ns||0.8); m.roughness=o.rough||1; m.metalness=0; m.needsUpdate=true;
+  m.userData.ground={tile,shore:!!o.shore,base:m.roughness};
+  const key='groundPBR'+(o.shore?'S':'')+(o.wear?'W':'')+(set.normalMap?'N':'');
+  m.onBeforeCompile=sh=>{ sh.uniforms.uWet=GROUND_U.uWet; sh.uniforms.uTile={value:tile}; if(o.shore) sh.uniforms.uShoreX=Env.seaU.uShoreX;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWP;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec3 vWP; uniform float uWet,uTile; ${o.shore?'uniform float uShoreX;':''}
+float gH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float gN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(gH(i),gH(i+vec2(1,0)),f.x),mix(gH(i+vec2(0,1)),gH(i+vec2(1,1)),f.x),f.y); }
+vec2 gUA,gUB; float gB,gMac,gPud;
+vec4 gS(sampler2D t){ return mix(texture2D(t,gUA),texture2D(t,gUB),gB); }`)
+    .replace('#include <map_fragment>',`vec2 wp=vWP.xz; gUA=wp/uTile; gUB=mat2(0.8,-0.6,0.6,0.8)*wp/(uTile*1.37)+vec2(0.31,0.57);
+gB=smoothstep(0.35,0.65,gN(wp/17.0)); gMac=mix(0.82,1.08,gN(wp/41.0)*0.6+gN(wp/9.0)*0.4);
+gPud=smoothstep(0.62,0.7,gN(wp/6.5)*0.7+gN(wp/2.1)*0.3)*uWet;
+#ifdef USE_MAP
+  vec4 texelColor=mapTexelToLinear(gS(map)); diffuseColor*=texelColor;
+#endif
+diffuseColor.rgb*=gMac*mix(1.0,0.72,uWet*0.6)*(1.0-gPud*0.25);
+${o.wear?`vec2 pc=floor(wp/vec2(6.0,4.5)); vec2 pf=fract(wp/vec2(6.0,4.5)); float hasP=step(0.84,gH(pc+3.1)); vec2 pm=vec2(0.12+0.3*gH(pc+7.0),0.15+0.3*gH(pc+9.0));
+float rPatch=hasP*step(pm.x,pf.x)*step(pf.x,1.0-pm.y*0.6)*step(pm.y,pf.y)*step(pf.y,1.0-pm.x*0.5); // tar repair patches
+float crack=(1.0-smoothstep(0.0,0.02,abs(gN(wp*0.8)-0.5)))*smoothstep(0.58,0.7,gN(wp/11.0+5.0)); // crack networks in places
+float oil=smoothstep(0.78,0.86,gN(wp*0.45+13.0))*0.6;
+diffuseColor.rgb*=mix(1.0,0.7,rPatch)*(1.0-crack*0.45)*(1.0-oil*0.35);`:''}
+${o.shore?'float gShore=1.0-smoothstep(uShoreX+3.0,uShoreX+16.0,vWP.x+gN(wp/3.0)*3.0); diffuseColor.rgb*=mix(1.0,0.55,gShore*gShore*(3.0-2.0*gShore));':''}`)
+    .replace('#include <roughnessmap_fragment>',`float roughnessFactor=roughness;
+#ifdef USE_ROUGHNESSMAP
+  roughnessFactor*=mix(0.72,1.0,gS(roughnessMap).g); // photo maps are too glossy for sun-baked Kerala ground
+#endif
+roughnessFactor=mix(roughnessFactor,roughnessFactor*0.78,uWet);
+${o.wear?'roughnessFactor*=1.0-oil*0.4-rPatch*0.08;':''} roughnessFactor=mix(roughnessFactor,0.06,gPud);
+${o.shore?'roughnessFactor=mix(roughnessFactor,0.35,gShore);':''}`)
+    .replace('#include <normal_fragment_maps>',`#ifdef USE_NORMALMAP
+  vec3 mapN=gS(normalMap).xyz*2.0-1.0; mapN.xy*=normalScale*(1.0-gPud);
+  normal=normalize((viewMatrix*vec4(normalize(vec3(mapN.x,mapN.z,-mapN.y)),0.0)).xyz);
+#endif`); };
+  m.onBeforeCompile.toString=()=>key; // r128 caches programs by this string; without it every variant shares the first one compiled
+  return m; }
+/** beach strip on the shared ground mesh: photo sand (world-mapped, anti-tiled) + a darker wet band along the waterline */
+function beachGround(m,sand){ m.onBeforeCompile=sh=>{ sh.uniforms.uSand={value:sand}; sh.uniforms.uShoreX=Env.seaU.uShoreX;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWP;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec3 vWP; uniform sampler2D uSand; uniform float uShoreX;
+float bH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float bN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(bH(i),bH(i+vec2(1,0)),f.x),mix(bH(i+vec2(0,1)),bH(i+vec2(1,1)),f.x),f.y); }`)
+    .replace('#include <color_fragment>',`#include <color_fragment>
+{ vec2 wp=vWP.xz; float ex=bN(wp/9.0)*6.0; float beach=(1.0-smoothstep(${(SEA_X+52).toFixed(1)},${(SEA_X+64).toFixed(1)},vWP.x+ex))*(1.0-smoothstep(${(RIVER_Z-30).toFixed(1)},${(RIVER_Z-4).toFixed(1)},vWP.z));
+  if(beach>0.001){ vec2 ua=wp/3.5, ub=mat2(0.8,-0.6,0.6,0.8)*wp/4.8+vec2(0.31,0.57); vec3 sc=mapTexelToLinear(mix(texture2D(uSand,ua),texture2D(uSand,ub),smoothstep(0.35,0.65,bN(wp/17.0)))).rgb;
+    sc*=mix(0.86,1.06,bN(wp/37.0)); float wet=1.0-smoothstep(uShoreX+3.0,uShoreX+16.0,vWP.x+bN(wp/3.0)*3.0); sc*=mix(1.0,0.55,wet*wet*(3.0-2.0*wet));
+    diffuseColor.rgb=mix(diffuseColor.rgb,sc,beach); } }`); };
+  m.onBeforeCompile.toString=()=>'beachGround'; m.needsUpdate=true; }
 function buildTextures(){
   TEX.asphalt=texAsphalt(); TEX.wet=texWetMap(); TEX.ground=texGround(); TEX.paver=texPaver(); TEX.cobble=texCobble(); TEX.laterite=texLaterite();
   TEX.tile=texTile(); TEX.tin=texTin(); TEX.curb=texCurb(); TEX.concrete=texConcrete(); TEX.sand=texSand(); TEX.leaf=texLeaf();
@@ -567,7 +624,26 @@ function buildTextures(){
   MAT.sandDecal=decal({map:TEX.sand,vertexColors:true},-9.6);
   MAT.road=decal({map:TEX.asphalt,vertexColors:true,roughness:0.9,roughnessMap:TEX.wet,envMapIntensity:0.6},-9);
   MAT.deck=new THREE.MeshStandardMaterial({map:TEX.asphalt,vertexColors:true,roughness:0.9,roughnessMap:TEX.wet,envMapIntensity:0.6});
+  { LITE_TEX=Game.QUALITY[Game.autoQuality()].sh===0; const asph=photoSet('asphalt'), pav=photoSet('pavers'), snd=photoSet('sand');
+    groundPBR(MAT.road,asph,3.2,{ns:0.9,wear:true}); groundPBR(MAT.deck,asph,3.2,{ns:0.9}); groundPBR(MAT.paver,pav,1.6,{ns:1}); MAT.road.color.set('#b4b8c0'); MAT.deck.color.set('#b4b8c0'); MAT.paver.color.set('#c98a76'); groundPBR(MAT.sandDecal,snd,3.5,{ns:0.7,shore:true});
+    beachGround(MAT.ground,snd.map);
+    { const cs=photoSet('concrete'); MAT.kerb=new THREE.MeshStandardMaterial(Object.assign({vertexColors:true,roughness:1,metalness:0,color:0xc4c1ba,envMapIntensity:0.25,side:THREE.DoubleSide},cs)); if(cs.normalMap) MAT.kerb.normalScale=new THREE.Vector2(0.7,0.7); }
+
+    MAT.paverSolid=groundPBR(new THREE.MeshStandardMaterial({vertexColors:true,envMapIntensity:0.2,color:0xc98a76}),pav,1.6,{ns:1}); }
   MAT.mark=decal({vertexColors:true,roughness:0.8},-8);
+  { const asph={map:MAT.road.map};
+    // worn road paint: patches where the asphalt shows through, plus traffic grime
+    MAT.mark.onBeforeCompile=sh=>{ sh.uniforms.uAsph={value:asph.map};
+      sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWP;').replace('#include <worldpos_vertex>','#include <worldpos_vertex>\nvWP=(modelMatrix*vec4(transformed,1.0)).xyz;');
+      sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec3 vWP; uniform sampler2D uAsph;
+float mH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float mN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(mH(i),mH(i+vec2(1,0)),f.x),mix(mH(i+vec2(0,1)),mH(i+vec2(1,1)),f.x),f.y); }`)
+      .replace('#include <color_fragment>',`#include <color_fragment>
+{ vec2 wp=vWP.xz; float lum=dot(diffuseColor.rgb,vec3(0.3,0.59,0.11)); float paint=smoothstep(0.35,0.55,lum); // only bright paint wears; manholes/grates stay
+  float wear=smoothstep(0.5,0.78,mN(wp*1.6)*0.55+mN(wp*6.0)*0.3+mN(wp/9.0)*0.15)*paint; vec3 asphC=pow(texture2D(uAsph,wp/3.2).rgb,vec3(2.2))*vec3(0.7,0.72,0.76); // no map on this material, so decode sRGB by hand
+  diffuseColor.rgb=mix(diffuseColor.rgb*mix(0.8,0.95,mN(wp*0.7)),asphC,wear*0.85); }`); };
+    MAT.mark.onBeforeCompile.toString=()=>'markWear'; MAT.mark.needsUpdate=true; }
   MAT.deckMark=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6});
   MAT.pond=new THREE.MeshStandardMaterial({color:0x3f6b55,roughness:0.08,metalness:0.2,normalMap:TEX.waterN,normalScale:new THREE.Vector2(0.35,0.35),envMapIntensity:1.6,depthTest:false,depthWrite:false});
   MAT.pond.userData.order=-9.4;
@@ -774,7 +850,7 @@ const MATKEYS = { // key -> [material getter, lod, castShadow]
   plain:[()=>MAT.plain,'far',true], plainDS:[()=>MAT.plainDS,'far',true], glass:[()=>MAT.glass,'far',true], tile:[()=>MAT.tile,'far',true], tin:[()=>MAT.tin,'far',true],
   laterite:[()=>MAT.laterite,'far',true], concrete:[()=>MAT.concrete,'far',true], shop:[()=>MAT.shop,'near',false], sign:[()=>MAT.sign,'mid',false],
   detail:[()=>MAT.plain,'near',true], detailDS:[()=>MAT.plainDS,'near',true], curb:[()=>MAT.curb,'mid',false], paverSolid:[()=>MAT.paverSolid,'mid',false], cobbleSolid:[()=>MAT.cobbleSolid,'mid',false],
-  veh:[()=>MAT.veh,'near',true], metal:[()=>MAT.metal,'mid',true], deck:[()=>MAT.deck,'far',false], deckMark:[()=>MAT.deckMark,'mid',false],
+  veh:[()=>MAT.veh,'near',true], metal:[()=>MAT.metal,'mid',true], deck:[()=>MAT.deck,'far',false], kerb:[()=>MAT.kerb,'mid',true], deckMark:[()=>MAT.deckMark,'mid',false],
 };
 for(let k=0;k<8;k++) MATKEYS['fac'+k]=[()=>MAT.fac[k],'far',true];
 class Batch {
@@ -848,6 +924,19 @@ function eStrip(gb,e,o0,o1,s0,s1,y,col,uvm){
     pL=L;pR=Rr;ps=s; }
 }
 function eDashes(gb,e,off,w,s0,s1,dash,gap,y,col){ for(let s=s0;s<s1-dash*0.5;s+=dash+gap) eStrip(gb,e,off-w/2,off+w/2,s,Math.min(s+dash,s1),y,col); }
+/** strip whose colour fades from c0 at offset o0 to c1 at o1 (used for grime along road edges) */
+function eStripG(gb,e,o0,o1,s0,s1,y,c0,c1,uvm){
+  if(s1<=s0) return; const ss=[s0]; for(const c of e.cum) if(c>s0+0.05&&c<s1-0.05) ss.push(c); ss.push(s1); let pL=null,pR=null,ps=0;
+  for(const s of ss){ const f=eFrame(e,s); const L=[f.x+f.nx*o1,y,f.z+f.nz*o1], Rr=[f.x+f.nx*o0,y,f.z+f.nz*o0];
+    if(pL){ const i=gb.v, n=[0,1,0]; const uv=(o,ss_)=>uvm?[o/uvm,ss_/uvm]:[0,0]; gb.vert(...pL,...n,...uv(o1,ps),c1); gb.vert(...pR,...n,...uv(o0,ps),c0); gb.vert(...Rr,...n,...uv(o0,s),c0); gb.vert(...L,...n,...uv(o1,s),c1);
+      gb.i.push(i,i+1,i+2,i,i+2,i+3); } // same winding as GB.quad
+    pL=L;pR=Rr;ps=s; } }
+/** raised concrete kerb between lateral offsets oIn (road side) and oOut, height h: top + both faces */
+function eKerb(gb,e,oIn,oOut,s0,s1,h,col){
+  if(s1<=s0) return; const ss=[s0]; for(const c of e.cum) if(c>s0+0.05&&c<s1-0.05) ss.push(c); ss.push(s1); let pr=null;
+  for(const s of ss){ const f=eFrame(e,s), P=(o,y)=>[f.x+f.nx*o,y,f.z+f.nz*o], cur={iT:P(oIn,h),oT:P(oOut,h),iB:P(oIn,0.015),oB:P(oOut,0.03),s};
+    if(pr){ const u0=pr.s/0.6,u1=s/0.6; gb.quad(pr.iT,cur.iT,cur.oT,pr.oT,col,[u0,0,u1,0.4]); gb.quad(pr.iB,cur.iB,cur.iT,pr.iT,col,[u0,0,u1,0.25]); gb.quad(cur.oB,pr.oB,pr.oT,cur.oT,col,[u1,0,u0,0.2]); }
+    pr=cur; } }
 const isUrban = zn => zn.urban;
 
 function buildRoads(){
@@ -862,13 +951,19 @@ function buildRoads(){
     if(e.fly) continue;
     const tint = e.type==='hw'?[0.82,0.82,0.84]: e.type==='st'?[1.12,1.1,1.06]: e.type==='svc'?[0.9,0.9,0.9]:[1,1,1];
     if(e.type==='ped'){ eStrip(G.cobble,e,-hw,hw,0,len,0.03,[1,1,1],3); continue; }
-    eStrip(G.road,e,-hw,hw,0,len,0.02,tint,8);
+    { const gr=[tint[0]*0.66,tint[1]*0.62,tint[2]*0.56], ew=Math.min(0.9,hw*0.3); // dirt and dust collect along both edges
+      eStripG(G.road,e,-hw,-hw+ew,0,len,0.02,gr,tint,8); eStrip(G.road,e,-hw+ew,hw-ew,0,len,0.02,tint,8); eStripG(G.road,e,hw-ew,hw,0,len,0.02,tint,gr,8); }
     const A=NODES[e.a], B=NODES[e.b];
     const s0=e.ta+(A.signal?6.2:0.4), s1=len-e.tb-(B.signal?6.2:0.4);
     if(e.type==='hw'){ for(const sg of[-1,1]){ eDashes(G.mark,e,sg*4.35,0.16,s0,s1,3,6,0.04,Wc); eStrip(G.mark,e,sg*9.0-0.08,sg*9.0+0.08,s0,s1,0.04,Wc); eStrip(G.mark,e,sg*0.95-0.07,sg*0.95+0.07,s0,s1,0.04,Yc);} }
     else if(e.type==='art'){ for(const sg of[-1,1]){ eDashes(G.mark,e,sg*3.95,0.14,s0,s1,3,4.5,0.04,Wc); eStrip(G.mark,e,sg*7.5-0.07,sg*7.5+0.07,s0,s1,0.04,Wc);} }
     else if(e.type==='main'){ eDashes(G.mark,e,0,0.14,s0,s1,3,4.5,0.04,Wc); for(const sg of[-1,1]) eStrip(G.mark,e,sg*4.55-0.06,sg*4.55+0.06,s0,s1,0.04,Wc); }
     else if(e.type==='svc'){ for(const sg of[-1,1]){ eStrip(G.mark,e,sg*9.1-0.07,sg*9.1+0.07,s0,s1,0.04,Wc); eStrip(G.mark,e,sg*15.0-0.07,sg*15.0+0.07,s0,s1,0.04,Wc);} }
+    // manholes in the lanes and drain gratings at the kerb
+    if(e.type==='art'||e.type==='main'){ const iron=C('#3b3936'), rim=C('#5d5a55'), grate=C('#262523');
+      for(let s=s0+11;s<s1-4;s+=R(55,90)){ const f=eFrame(e,s), lo=(R(1)<0.5?-1:1)*hw*R(0.3,0.6), cx=f.x+f.nx*lo, cz=f.z+f.nz*lo, K=14;
+        for(let k=0;k<K;k++){ const a0=k/K*TAU, a1=(k+1)/K*TAU; for(const [r,c,y] of [[0.42,rim,0.041],[0.34,iron,0.043]]) G.mark.tri([cx,y,cz],[cx+Math.cos(a0)*r,y,cz-Math.sin(a0)*r],[cx+Math.cos(a1)*r,y,cz-Math.sin(a1)*r],c); } }
+      if(T_.side>0) for(let s=s0+6;s<s1-2;s+=R(18,30)) for(const sg of[-1,1]){ const o=sg*(hw-0.3); eStrip(G.mark,e,o-0.22,o+0.22,s,s+0.7,0.042,grate); for(let b=0;b<4;b++) eStrip(G.mark,e,o-0.18,o+0.18,s+0.1+b*0.15,s+0.16+b*0.15,0.044,rim); } }
     // zebra + stop lines
     for(const [nd,atB] of [[A,false],[B,true]]){ if(!nd.signal) continue; const d0=(atB?e.tb:e.ta)+0.8; const sA=atB?len-d0-3:d0, sB=atB?len-d0:d0+3;
       for(let l=-hw+0.7;l<hw-0.6;l+=1.05) eStrip(G.mark,e,l,l+0.5,sA,sB,0.04,Wc);
@@ -877,7 +972,7 @@ function buildRoads(){
     for(let s=e.ta+1.5;s<len-e.tb-1.5;s+=24){ const sE=Math.min(s+24,len-e.tb-1.5); const f=eFrame(e,(s+sE)/2); const zn=zoneAt(f.x,f.z);
       for(const sg of[-1,1]){
         if(e.beach && sg===(-1)) { /* sea side handled by promenade */ }
-        if(T_.side>0 && zn.urban){ eStrip(G.mark,e, sg>0?hw:-hw-0.22, sg>0?hw+0.22:-hw, s,sE,0.045,curbC); eStrip(G.paver,e, sg>0?hw+0.22:-hw-0.22-T_.side, sg>0?hw+0.22+T_.side:-hw-0.22, s,sE,0.035,[1,1,1],2.2); }
+        if(T_.side>0 && zn.urban){ eKerb(chunkAt(f.x,f.z).gb('kerb'),e, sg*hw, sg*(hw+0.22), s,sE,0.15,[1,1,1]); eStrip(G.paver,e, sg>0?hw+0.22:-hw-0.22-T_.side, sg>0?hw+0.22+T_.side:-hw-0.22, s,sE,0.035,[1,1,1],2.2); }
         else if(e.type!=='hw'||true){ const w=e.type==='hw'?2.6:1.5; eStrip(G.patch,e, sg>0?hw:-hw-w, sg>0?hw+w:-hw, s,sE,0.012, zn.urban?C('#8e877a'):dirt, 5); }
       } }
     // medians with shrubs + twin-arm streetlights
@@ -2576,8 +2671,10 @@ const Env = { cur:null, tgt:null, sunDir:new V3(), time:0, wet:0.18, envT:0,
         vec3 base=mix(uDeep,uShallow,exp(-dS*0.028))*(0.3+0.7*uLight);
         vec3 col=mix(base,sky,fres)+spec*uLight;
         float nz=noise(p*0.35+vec2(uTime*0.2,0.0)); float roll=sin(dS*0.34-uTime*1.25+nz*3.0+sin(p.y*0.05)*2.0);
-        float foam=smoothstep(0.62,1.0,roll)*exp(-dS*0.055)*(0.55+0.45*noise(p*2.2-uTime*0.4)); foam+=smoothstep(4.5,0.0,dS)*(0.55+0.45*noise(p*1.7+uTime*0.6));
-        col=mix(col,vec3(0.93,0.95,0.94)*(0.35+0.65*uLight),clamp(foam,0.0,1.0)*0.9);
+        float foam=smoothstep(0.7,1.0,roll)*exp(-dS*0.07)*(0.4+0.6*noise(p*2.2-uTime*0.4))*0.7;
+        float swash=1.6+1.3*sin(uTime*0.45+noise(p*0.08)*4.0); float sw=exp(-pow((dS-swash)*1.6,2.0))*(0.45+0.55*noise(p*1.9+uTime*0.5)); foam+=sw*0.85; // thin wash line moving up and down the sand
+        col=mix(col,vec3(0.9,0.93,0.92)*(0.35+0.65*uLight),clamp(foam,0.0,1.0)*0.8);
+        float shallow=smoothstep(0.0,2.5,dS+noise(p*0.6)*1.0); col=mix(vec3(0.42,0.5,0.44)*(0.35+0.65*uLight)+spec*0.4*uLight,col,shallow); // thin clear water over sand right at the edge
         float fdn=max(dist-fogNear*0.25,0.0)/fogFar; float ff=min(1.0-exp(-fdn*fdn*2.6-fdn*0.55),0.985); col=mix(col,fogColor,ff);
         gl_FragColor=vec4(col,1.0);
         #include <tonemapping_fragment>
@@ -2603,8 +2700,7 @@ const Env = { cur:null, tgt:null, sunDir:new V3(), time:0, wet:0.18, envT:0,
     this.scene.fog.color.copy(U.uFog.value); this.scene.fog.near=L('fn'); this.scene.fog.far=L('ff');
     const S=this.seaU; S.uSunDir.value.copy(this.sunDir); S.uSun.value.copy(this.sun.color).multiplyScalar(this.sun.intensity*0.5); S.uZen.value.copy(U.uZen.value); S.uHor.value.copy(U.uHor.value); S.uLight.value=clamp(0.35+this.sun.intensity*0.25+this.hemi.intensity*0.2,0.4,1.15);
     this.hillMat.color.copy(U.uFog.value).lerp(lin('#3f5a52'),0.3);
-    this.wet=L('wet'); const w=this.wet; for(const m of [MAT.road,MAT.deck]){ m.roughness=lerp(0.95,0.3,w); m.envMapIntensity=lerp(0.35,1.5,w); const k=lerp(1,0.7,w); m.color.setRGB(k,k,k*1.02); }
-    MAT.paver.roughness=lerp(0.95,0.5,w); this.rainA=L('rain'); this.rain.visible=this.rainA>0.02; this.rainU.uA.value=this.rainA; this.renderer.toneMappingExposure=L('exp');
+    this.wet=L('wet'); const w=this.wet; GROUND_U.uWet.value=clamp((w-0.2)/0.8,0,1); for(const m of [MAT.road,MAT.deck,MAT.paver,MAT.paverSolid]) m.envMapIntensity=lerp(0.3,0.85,w); this.rainA=L('rain'); this.rain.visible=this.rainA>0.02; this.rainU.uA.value=this.rainA; this.renderer.toneMappingExposure=L('exp');
     Object.assign(this.cur,{el:L('el'),az:L('az'),sunI:L('sunI'),hemiI:L('hemiI'),fn:L('fn'),ff:L('ff'),cover:L('cover'),wet:w,rain:this.rainA,exp:L('exp')});
     if(t>=1) this.cur=Object.assign({},this.tgt);
   },
