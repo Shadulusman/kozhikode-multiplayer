@@ -65,6 +65,7 @@
 - Bought vehicles: `PVX` map + `vehById(vi)`; every PVehicle has `vid` (shared = index, bought = 1000+); only the owner may take seat 0 (server denies others).
 - Full map: `BigMap` (M, or tap the minimap): drag/wheel/pinch, tap a place/marker or anywhere for a waypoint (`Eco.setWaypoint`); the GPS route (`Eco.route`, road-graph Dijkstra from `Buses.path`) serves both missions and waypoints.
 - Auto-rickshaw fares: spot kind `auto` (Railway pre-paid stand, 3 drivable autos appended to SPAWN_VEH there). Server requires `p.vt==='auto'` (client sends vehicle type in state) and seat 0 for pickup and drop; fare ₹100–450 + 25% fast bonus, tx type `FARE`. Passenger NPC waits at pickup then rides seat 1 (`Eco.passenger`).
+- Used cars: Malabar Used Cars near HiLITE (`cars` spot): ₹35k–₹1.4L, showroom vehicles with price tags outside every dealer, star stats in shop. Garage limit 3 vehicles (`GARAGE_SLOTS`). Bought vehicles carry a fictional `KL 11 XX 1234` plate (stable hash of owner+item) shown front/back.
 - Tests: `npm test` (store, incl. pg-mem Postgres), `node test/economy-e2e.js`, `node test/auto-e2e.js` against a running server (full loop + exploits).
 
 ## Moderation

@@ -2292,7 +2292,7 @@ function parkModel(B,type,x,z,rot,colorHex,local){ const mn=VM.ready&&!BUSLIV[ty
 /** material(s) for a vehGeo geometry: model cars carry a second group for the windows */
 function vehMats(g){ if(!g.groups.length) return MAT.veh; if(!MAT.carGlass) MAT.carGlass=new THREE.MeshStandardMaterial({color:0x07090c,roughness:0.12,metalness:0.0,envMapIntensity:0.25}); return [MAT.veh,MAT.carGlass]; }
 const VPAINT=['#b71c1c','#0d47a1','#1b5e20','#f5f5f5','#212121','#9e9e9e','#e65100','#4a148c','#795548','#c62828','#1565c0','#fafafa'];
-function vmPaint(colorHex){ const h=String(colorHex||'x').split('').reduce((a,c)=>a*31+c.charCodeAt(0)|0,7); return VPAINT[Math.abs(h)%VPAINT.length]; }
+function vmPaint(colorHex){ if(colorHex&&VPAINT.includes(String(colorHex).toLowerCase())) return colorHex; const h=String(colorHex||'x').split('').reduce((a,c)=>a*31+c.charCodeAt(0)|0,7); return VPAINT[Math.abs(h)%VPAINT.length]; }
 function vmPick(type,colorHex){ const l=VMAP[type]; if(!l) return null; const h=String(colorHex||type).split('').reduce((a,c)=>a+c.charCodeAt(0),0); return l[h%l.length]; }
 /** once models load: take wheelbase / wheel radius from the first model of each type so drivable wheels line up */
 function calibrateVehModels(){ if(!VM.ready) return; for(const type in VMAP){ const name=VMAP[type][0], {wheels}=bakeVehModel(name,type,null,true); if(wheels.length<2) continue;
@@ -2897,6 +2897,8 @@ const Net = {
   /* bought vehicles: created on every client with the server-chosen vid (1000+) */
   onPV(m){ const old=PVX.get(m.vid); if(old){ if(Player.veh===old) Player.exit(Game.scene); for(const r of this.remote.values()) if(r.mounted===old) this.release(r); Game.scene.remove(old.g); PVX.delete(m.vid); const i=PVEH.indexOf(old); if(i>=0) PVEH.splice(i,1); }
     if(m.gone) return; const v=new PVehicle(m.type,m.x,m.z,m.h,m.color); v.vid=m.vid; v.owner=m.owner; PVX.set(m.vid,v); Game.scene.add(v.g);
+    if(m.plate){ const c=cv(256,64), g=c.getContext('2d'); g.fillStyle='#f7f7f2'; g.fillRect(0,0,256,64); g.strokeStyle='#111'; g.lineWidth=4; g.strokeRect(2,2,252,60); g.fillStyle='#111'; g.font='800 36px '+FONT_EN3; g.textAlign='center'; g.fillText(m.plate,128,46); const t=mkTex(c,false);
+      const two=v.d.two, w=two?0.26:0.52, h=w/4; for(const back of[1,-1]){ if(two&&back<0) continue; const pl=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t})); pl.position.set(0,two?0.62:0.42,back*(-v.d.L/2-0.04)); if(back<0) pl.rotation.y=0; else pl.rotation.y=PI; v.g.add(pl); } } // fictional Kerala-style registration
     if(m.owner===this.id&&!Player.veh&&!Player.bus){ setTimeout(()=>{ if(!Player.veh){ Player.enter(v,Game.scene); UI.fade(); } },150); } },
   /* outfit changed (bought / worn): rebuild that player's avatar */
   onLook(id,look){ if(id===this.id){ Object.assign(MYLOOK,look); try{ localStorage.setItem('kzk_look',JSON.stringify(MYLOOK)); }catch(e){} if(Player.veh||Player.bus) return; const sc=Game.scene, hh=buildPerson(MYLOOK); sc.remove(Player.g); Player.g=hh.root; Player.J=hh.J; Player.av=hh.av; Player.g.position.set(Player.x,Player.y,Player.z); Player.g.rotation.y=Player.h; sc.add(Player.g); return; }
@@ -3265,14 +3267,19 @@ const Eco={ ready:false, cash:0, xp:0, level:1, jobs:0, owned:[], outfit:{}, spo
   buildMarks(){ const sc=Game.scene; this.marks.forEach(m=>sc.remove(m)); this.marks=[]; this.tex={};
     const ring=(col)=>{ const m=new THREE.Mesh(new THREE.RingGeometry(1.1,1.35,40),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.7,depthWrite:false})); m.rotation.x=-PI/2; return m; };
     const mk=(kind,x,z)=>{ const t=this.tex[kind]||(this.tex[kind]=this.iconTex(kind)); const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:true})); sp.scale.set(1.3,1.3,1); const g=new THREE.Group(); const y=groundY(x,z,3); sp.position.set(0,2.9,0); g.add(sp); const r=ring(kind==='dest'?0x66ff99:0xffd54f); r.position.y=0.06; g.add(r); g.position.set(x,y,z); sc.add(g); this.marks.push(g); return g; };
-    for(const s of this.spots) s.mark=mk(s.kind,s.x,s.z); this.target=mk('dest',0,0); this.target.visible=false; },
+    for(const s of this.spots) s.mark=mk(s.kind,s.x,s.z); this.target=mk('dest',0,0); this.target.visible=false;
+    /* showrooms: every vehicle for sale stands outside its dealer with a price tag */
+    for(const s of this.spots.filter(x=>x.kind==='dealer')){ const items=Object.entries(this.catalog).filter(([,v])=>v.shop===s.id&&v.kind==='vehicle'); items.forEach(([k,v],i)=>{ const ang=i/items.length*PI*1.2-0.6, r=7, x=s.x+Math.cos(ang)*r, z=s.z+Math.sin(ang)*r;
+      const m=new THREE.Mesh(vehGeo(v.type,v.color,false),MAT.veh); m.material=vehMats(m.geometry); m.castShadow=true; m.position.set(x,groundY(x,z,3),z); m.rotation.y=Math.atan2(s.x-x,s.z-z)+PI*0.5; sc.add(m); this.marks.push(m); addCol(x,z,VEH[v.type].W,VEH[v.type].L,m.rotation.y,1.6);
+      const c=cv(256,96), g=c.getContext('2d'); g.fillStyle='rgba(10,14,18,.85)'; g.fillRect(0,0,256,96); g.fillStyle='#f2b84b'; g.font='800 30px '+FONT_EN3; g.textAlign='center'; g.fillText(inr(v.price),128,42); g.fillStyle='#fff'; g.font='600 22px '+FONT_EN3; g.fillText(v.name,128,78);
+      const tag=new THREE.Sprite(new THREE.SpriteMaterial({map:mkTex(c,false)})); tag.scale.set(2.4,0.9,1); tag.position.set(x,m.position.y+(VEH[v.type].H||1.2)+0.9,z); sc.add(tag); this.marks.push(tag); }); } },
   nearSpot(){ if(!this.ready||Player.veh||Player.bus) return null; let b=null,bd=8; for(const s of this.spots){ const d=Math.hypot(s.x-Player.x,s.z-Player.z); if(d<bd){ bd=d; b=s; } } return b; },
   prompt(){ const s=this.nearSpot(); if(!s) return ''; return '<kbd>E</kbd> '+(s.kind==='auto'?(this.mission?'Job in progress':'Start auto driver shift · '+s.name):s.kind==='food'?(this.mission?'Job in progress':'Start delivery job · '+s.name):s.kind==='dealer'?'Browse vehicles · '+s.name:'Shop clothes · '+s.name); },
   interact(){ const s=this.nearSpot(); if(!s) return false; if(s.kind==='food'||s.kind==='auto'){ if(this.mission) UI.toast('Finish your current job first'); else this.send({k:'accept',spot:s.id}); } else this.openShop(s.id); return true; },
   openShop(id){ const s=this.spots.find(x=>x.id===id), e=this.shop; this.shopOpen=id; const items=Object.entries(this.catalog).filter(([,v])=>v.shop===id);
     e.innerHTML='<button class="x">✕</button><h3>'+s.name+'</h3><div style="opacity:.75;font-size:.75rem;margin-bottom:.3rem">'+s.ml+' · Wallet '+inr(this.cash)+'</div>';
     for(const [k,v] of items){ const own=this.owned.includes(k), row=document.createElement('div'); row.className='it'; const sw=document.createElement('i'); sw.className='sw'; sw.style.background=v.color||(v.look&&v.look.shirt)||'#888'; row.appendChild(sw);
-      const t=document.createElement('span'); t.textContent=v.name+' — '+inr(v.price); row.appendChild(t); const b=document.createElement('button');
+      const t=document.createElement('span'); t.textContent=v.name+' — '+inr(v.price); if(v.stats){ const st=document.createElement('div'); st.style.cssText='font:600 .66rem var(--text);opacity:.8;letter-spacing:.02em'; st.textContent=['Speed','Accel','Handling','Brakes'].map((n,i)=>n+' '+'★'.repeat(v.stats[i])+'☆'.repeat(5-v.stats[i])).join('  '); t.appendChild(st); } row.appendChild(t); const b=document.createElement('button');
       if(own){ b.className='g'; b.textContent=v.kind==='vehicle'?'Ride':'Wear'; b.onclick=()=>{ if(v.kind==='vehicle') this.spawn(k); else this.send({k:'wear',item:k}); }; } else { b.textContent='Buy'; b.onclick=()=>this.send({k:'buy',item:k}); }
       row.appendChild(b); e.appendChild(row); }
     e.querySelector('.x').onclick=()=>this.closeShop(); e.style.display='block'; },
