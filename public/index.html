@@ -235,6 +235,18 @@ const nextFrame = ()=>new Promise(r=>setTimeout(r,0));
    Procedural textures (canvas). No external image assets are required.
    ===================================================================== */
 const TEX = {}, MAT = {};
+/** coastal wind: sways vertices above height h0 by distance from the trunk axis, phase-shifted per instance so trees don't move in sync */
+const WIND = {uTime:{value:0}};
+function windSway(m,amp,h0,key){ m.onBeforeCompile=sh=>{ sh.uniforms.uTime=WIND.uTime;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nuniform float uTime;').replace('#include <begin_vertex>',`#include <begin_vertex>
+{ vec3 ip=vec3(0.0);
+#ifdef USE_INSTANCING
+  ip=vec3(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2]);
+#endif
+  float ph=uTime*1.35+ip.x*0.13+ip.z*0.17; float hh=max(transformed.y-${h0.toFixed(1)},0.0); float r=length(transformed.xz);
+  float w=(r*0.055+hh*0.015)*${amp.toFixed(2)}; float gust=0.75+0.25*sin(uTime*0.31+ip.x*0.01);
+  transformed.x+=(sin(ph)*w+sin(ph*2.7+transformed.z*1.7)*w*0.35)*gust; transformed.z+=cos(ph*0.83)*w*0.6*gust; transformed.y+=sin(ph*1.9+r*1.3)*w*0.4*gust; }`); };
+  m.onBeforeCompile.toString=()=>'wind_'+key; return m; }
 const FONT_ML = '"Baloo Chettan 2","KzkMal","Noto Sans Malayalam","Nirmala UI","Kartika","Malayalam MN",sans-serif';
 const FONT_EN = '"Baloo Chettan 2","Arial Black","Trebuchet MS",Arial,sans-serif';
 const FONT_EN2 = 'Georgia,"Times New Roman",serif';
@@ -326,6 +338,27 @@ function texFrond(){ // coconut frond with alpha
   g.strokeStyle='#6f7a2a'; g.lineWidth=4; g.beginPath(); g.moveTo(64,512); g.lineTo(64,10); g.stroke();
   const t=mkTex(c,false); return t;
 }
+/** coconut frond: rachis + ~80 pairs of long tapered leaflets, alpha-cut; u 0..1 across, v 0 (base) .. 1 (tip) */
+function texFrond2(){
+  const W=256,H=1024,c=cv(W,H),g=c.getContext('2d'); g.clearRect(0,0,W,H); const cx=W/2;
+  for(let i=0;i<84;i++){ const t=i/84, y=H-18-t*(H-40), env=Math.sin(Math.min(1,t*1.25)*PI*0.5)*(t>0.86?(1-t)/0.14:1), len=(30+96*env)*TRr(0.9,1.08);
+    for(const sg of[-1,1]){ const ang=0.55+TRr(-0.08,0.08), ex=cx+sg*len*Math.cos(ang*0.55), ey=y-len*Math.sin(ang)*0.62, w=5.5+3.5*env;
+      const gr=g.createLinearGradient(cx,y,ex,ey); const base=['#3c6420','#456e24','#3a5f1e','#4d7728'][i%4]; gr.addColorStop(0,'#2e4f18'); gr.addColorStop(0.35,base); gr.addColorStop(1,TRr()<0.12?'#9a8a42':'#6f9a34'); g.fillStyle=gr;
+      g.beginPath(); g.moveTo(cx+sg*2,y); g.quadraticCurveTo((cx+ex)/2+sg*w,(y+ey)/2-w*0.6,ex,ey); g.quadraticCurveTo((cx+ex)/2-sg*w*0.4,(y+ey)/2+w,cx+sg*2,y+w*0.8); g.fill();
+      g.strokeStyle='rgba(20,40,10,0.35)'; g.lineWidth=0.8; g.beginPath(); g.moveTo(cx,y); g.lineTo(ex,ey); g.stroke(); } }
+  const rg=g.createLinearGradient(0,H,0,0); rg.addColorStop(0,'#b0a050'); rg.addColorStop(1,'#7f8a34'); g.strokeStyle=rg; g.lineWidth=6; g.beginPath(); g.moveTo(cx,H); g.lineTo(cx,14); g.stroke();
+  const t=mkTex(c,false); t.anisotropy=4; return t; }
+/** palm bark: grey-brown with leaf-scar rings and vertical fissures (tiles vertically) */
+function texBark(){ const c=cv(64,256),g=c.getContext('2d'); g.fillStyle='#8a7f70'; g.fillRect(0,0,64,256);
+  speck(g,64,256,1400,['#9a8f80','#6e6458','#a59b8b','#5d554b'],1,3,0.2,0.6);
+  for(let y=0;y<256;y+=TRr(9,15)){ g.fillStyle='rgba(50,42,34,0.55)'; g.fillRect(0,y,64,TRr(1.5,3)); g.fillStyle='rgba(190,180,160,0.25)'; g.fillRect(0,y+2.5,64,1.5); }
+  for(let i=0;i<14;i++){ const x=TRr(64); g.fillStyle='rgba(40,34,28,0.35)'; g.fillRect(x,0,TRr(0.8,1.6),256); } return mkTex(c); }
+/** leaf cluster card for broadleaf canopies: many small leaves, soft alpha edge */
+function texLeafCard(){ const S=256,c=cv(S,S),g=c.getContext('2d'); g.clearRect(0,0,S,S); const cols=['#2f5a1e','#3b6a24','#4a7a2c','#2a4d1a','#56862f','#3f6f26','#6b9440'];
+  for(let i=0;i<420;i++){ const r=Math.sqrt(trng())*S*0.46, a=TRr(TAU), x=S/2+Math.cos(a)*r, y=S/2+Math.sin(a)*r*0.92, sz=TRr(7,13)*(1-r/(S*0.6));
+    g.save(); g.translate(x,y); g.rotate(a+TRr(-0.9,0.9)); g.fillStyle=cols[Math.floor(trng()*cols.length)]; g.beginPath(); g.ellipse(0,0,sz,sz*0.45,0,0,TAU); g.fill();
+    g.strokeStyle='rgba(15,35,10,0.35)'; g.lineWidth=0.6; g.beginPath(); g.moveTo(-sz,0); g.lineTo(sz,0); g.stroke(); g.restore(); }
+  return mkTex(c,false); }
 function texBanana(){
   const c=cv(128,256),g=c.getContext('2d');
   const gr=g.createLinearGradient(0,0,128,0); gr.addColorStop(0,'#4f8f2a'); gr.addColorStop(0.5,'#7dbb3c'); gr.addColorStop(1,'#4f8f2a'); g.fillStyle=gr;
@@ -600,7 +633,7 @@ float bN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(
 function buildTextures(){
   TEX.asphalt=texAsphalt(); TEX.wet=texWetMap(); TEX.ground=texGround(); TEX.paver=texPaver(); TEX.cobble=texCobble(); TEX.laterite=texLaterite();
   TEX.tile=texTile(); TEX.tin=texTin(); TEX.curb=texCurb(); TEX.concrete=texConcrete(); TEX.sand=texSand(); TEX.leaf=texLeaf();
-  TEX.frond=texFrond(); TEX.banana=texBanana(); TEX.waterN=texWaterNormal();
+  TEX.frond=texFrond(); TEX.frond2=texFrond2(); TEX.bark=texBark(); TEX.leafCard=texLeafCard(); TEX.banana=texBanana(); TEX.waterN=texWaterNormal();
   TEX.fac=[]; for(let k=0;k<8;k++)TEX.fac.push(texFacade(k));
   TEX.shop=texShopAtlas(); TEX.sign=texSignAtlas();
   const L=o=>new THREE.MeshLambertMaterial(o);
@@ -650,6 +683,11 @@ float mN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(
   MAT.frond=L({map:TEX.frond,alphaTest:0.45,side:THREE.DoubleSide,vertexColors:false});
   MAT.frondDepth=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:TEX.frond,alphaTest:0.45});
   MAT.banana=L({map:TEX.banana,alphaTest:0.45,side:THREE.DoubleSide});
+  MAT.bark=L({map:TEX.bark,vertexColors:true});
+  MAT.frond2=windSway(L({map:TEX.frond2,alphaTest:0.38,side:THREE.DoubleSide,vertexColors:true,emissive:new THREE.Color(0x16240a)}),1.0,7.0,'frond2'); // emissive = light through backlit leaves
+  MAT.frond2Depth=windSway(new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:TEX.frond2,alphaTest:0.38}),1.0,7.0,'frond2D');
+  MAT.leafCard=windSway(L({map:TEX.leafCard,alphaTest:0.42,side:THREE.DoubleSide,vertexColors:true,emissive:new THREE.Color(0x0c1606)}),0.35,3.0,'leaf');
+  MAT.leafCardDepth=windSway(new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,map:TEX.leafCard,alphaTest:0.42}),0.35,3.0,'leafD');
   MAT.canopy=L({map:TEX.leaf,vertexColors:true});
   MAT.veh=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.34,metalness:0.3,envMapIntensity:1.0});
   MAT.metal=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.5,metalness:0.6});
@@ -860,7 +898,15 @@ class Batch {
   /** world position of a local point */
   W(lx,lz){ const f=this.fr; return f? [f.x+lx*f.c+lz*f.s, f.z-lx*f.s+lz*f.c] : [lx,lz]; }
   /** add instanced prop (palm, lamp...) in local coords */
-  add(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
+  add(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){
+    const veg=type==='palm'||type==='tree'||type==='shrub';
+    if(veg&&this.r>400&&this.name!=='farbank'&&this.name!=='far'&&typeof chunkAt==='function'){ const f=this.fr, [wx,wz]=this.W(lx,lz); // big landmark batches (the beach) hand trees to the streaming chunk so LOD works
+      return chunkAt(wx,wz).add(type,wx,y+(f?f.y:0),wz,ry+(f?f.rot:0),sx,sy,sz,tint); }
+    if(veg&&this.r<=400&&this.name!=='far'){ const [wx,wz]=this.W(lx,lz), hsh=Math.abs(Math.sin(wx*12.9898+wz*78.233)*43758.5453)%1;
+      this.add1(type==='palm'?['palmA','palmB','palmC'][Math.floor(hsh*3)]:type==='tree'?'treeHi':'shrubHi',lx,y,lz,ry,sx,sy,sz,tint); } // near: detailed variant; the original stays as the distance LOD
+    else if(type==='palm'||type==='tree'||type==='shrub') type+='M'; // big/far batches: keep the simple model at every distance
+    this.add1(type,lx,y,lz,ry,sx,sy,sz,tint); }
+  add1(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
     (this.inst[type]||(this.inst[type]=[])).push(x,y,z,ry,sx,sy===undefined?sx:sy,sz===undefined?sx:sz, tint?tint[0]:1,tint?tint[1]:1,tint?tint[2]:1); }
   /** collider in local coords */
   col(lx,lz,sx,sz,rot=0,h=30,y0=0){ const [x,z]=this.W(lx,lz); return addCol(x,z,sx,sz,rot+(this.fr?this.fr.rot:0),h+(this.fr?this.fr.y:0),y0+(this.fr?this.fr.y:0)); }
@@ -1160,8 +1206,39 @@ function buildInstGeos(){
       for(let s=0;s<=segs;s++){ const ox=px+ca*d, oz=sa*d, oy=py+h; const lx=-sa*w*(1-0.25*s/segs), lz=ca*w*(1-0.25*s/segs); const A=[ox-lx,oy,oz-lz], Bq=[ox+lx,oy,oz+lz];
         if(prev) fr.quad(prev[0],prev[1],Bq,A,WHITE,[0,(s-1)/segs,1,s/segs]);
         prev=[A,Bq]; d+=Math.cos(a)*L/segs; h+=Math.sin(a)*L/segs; a-= low?0.55:0.66; } }
-    INST.palm={lod:'mid',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:fr.build(),m:()=>MAT.frond,depth:()=>MAT.frondDepth,cast:true}]};
+    INST.palm={lod:'midx',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:fr.build(),m:()=>MAT.frond,depth:()=>MAT.frondDepth,cast:true}]};
   }
+  /* detailed coconut palms (near LOD): curved ringed trunk, V-folded drooping fronds, dry hanging fronds, coconut bunch */
+  const palm=(seed,o)=>{ const rnd=mulberry32(seed), Rn=(a,b)=>a+rnd()*(b-a); const tr=new GB(), fr=new GB(); const H=o.H, N=10, pts=[];
+    for(let i=0;i<=N;i++){ const t=i/N; pts.push([o.bend*H*t*t+o.s*Math.sin(t*PI)*0.4, t*H]); }
+    for(let i=0;i<N;i++){ const [x0,y0]=pts[i],[x1,y1]=pts[i+1], dx=x1-x0, dy=y1-y0, r0=lerp(0.27,0.17,i/N), r1=lerp(0.27,0.17,(i+1)/N), sh=0.92+0.12*rnd();
+      tr.mesh(cylG(r1,r0,Math.hypot(dx,dy)+0.04,9,true),TR((x0+x1)/2,(y0+y1)/2,0,0,0,-Math.atan2(dx,dy)),[sh,sh*0.98,sh*0.95]); }
+    tr.mesh(cylG(0.28,0.4,0.55,9),T(0,0.27,0),[0.85,0.8,0.75]);
+    const [cx,cy]=pts[N]; tr.ico(cx,cy-0.1,0,0.34,0.42,0.34,C('#55502c'),1);
+    for(let k=0;k<o.nuts;k++){ const a=k/o.nuts*TAU+Rn(-0.2,0.2), rr=Rn(0.22,0.36); tr.sph(cx+Math.cos(a)*rr,cy-0.42-Rn(0,0.25),Math.sin(a)*rr,Rn(0.1,0.13),C(pick(['#6d7a24','#8a8a2c','#a07a2a','#5f6f20'])),1.1,8,6); }
+    const NF=o.nf; for(let k=0;k<NF;k++){ const dry=k<o.dry, az=k/NF*TAU*2.39+Rn(-0.15,0.15), ca=Math.cos(az), sa=Math.sin(az);
+      const L=dry?Rn(3.2,4.0):Rn(o.L*0.85,o.L*1.08), w=dry?0.55:Rn(0.85,1.05), segs=6, tint=dry?C(pick(['#9a7a48','#8a6a3c','#a8865a'])):[Rn(0.9,1.05),Rn(0.92,1.05),Rn(0.85,1)];
+      let a=dry?-1.25:lerp(1.0,-0.25,(k%5)/4+Rn(-0.1,0.1)), d=0.2, h=0, prev=null; const droop=dry?0.05:Rn(0.2,0.3);
+      for(let s=0;s<=segs;s++){ const t=s/segs, ox=cx+ca*d, oz=sa*d, oy=cy+h, ww=w*(t<0.15?t/0.15*0.7+0.3:1-0.65*Math.max(0,(t-0.4)/0.6)), fold=ww*0.32;
+        const lx=-sa*ww, lz=ca*ww, Cn=[ox,oy,oz], Lf=[ox+lx,oy-fold,oz+lz], Rt=[ox-lx,oy-fold,oz-lz];
+        if(prev){ const v0=(s-1)/segs, v1=t; fr.quad(prev[1],prev[0],Cn,Lf,tint,[0,v0,0.5,v1]); fr.quad(prev[0],prev[2],Rt,Cn,tint,[0.5,v0,1,v1]); }
+        prev=[Cn,Lf,Rt]; d+=Math.cos(a)*L/segs; h+=Math.sin(a)*L/segs; a-=droop*(1+t*1.6); } }
+    return [{g:tr.build(),m:()=>MAT.bark,cast:true},{g:fr.build(),m:()=>MAT.frond2,depth:()=>MAT.frond2Depth,cast:true}]; };
+  INST.palmA={lod:'near',parts:palm(11,{H:10.5,bend:0.05,s:0.25,nf:20,dry:2,L:5.0,nuts:10})};
+  INST.palmB={lod:'near',parts:palm(23,{H:9.5,bend:0.32,s:-0.2,nf:18,dry:3,L:4.8,nuts:8})};
+  INST.palmC={lod:'near',parts:palm(37,{H:8.0,bend:-0.12,s:0.4,nf:22,dry:2,L:5.3,nuts:12})};
+  /* card-based broadleaf canopy (near LOD): crossed leaf-cluster cards on a branching trunk, normals pushed outward for soft canopy lighting */
+  const cards=(gb,cx,cy,cz,rx,ry,rz,n,size,rnd)=>{ const from=gb.v; for(let i=0;i<n;i++){ const u=rnd()*TAU, v=Math.acos(2*rnd()-1)*0.85, px=cx+Math.sin(v)*Math.cos(u)*rx, py=cy+Math.cos(v)*ry*0.85, pz=cz+Math.sin(v)*Math.sin(u)*rz, s=size*(0.75+0.5*rnd()), yaw=rnd()*PI;
+      for(const k of[0,1]){ const a=yaw+k*PI/2, ux=Math.cos(a)*s, uz=Math.sin(a)*s, tilt=(rnd()-0.5)*0.6*s; const sh=0.85+0.25*rnd(), col=[sh,sh*(0.95+0.1*rnd()),sh*0.9];
+        gb.quad([px-ux,py-s*0.6+tilt,pz-uz],[px+ux,py-s*0.6-tilt,pz+uz],[px+ux,py+s*0.6-tilt,pz+uz],[px-ux,py+s*0.6+tilt,pz-uz],col,[0,0,1,1]); } }
+    for(let i=from;i<gb.v;i++){ const dx=gb.p[i*3]-cx, dy=(gb.p[i*3+1]-cy)*1.4+0.6, dz=gb.p[i*3+2]-cz, l=Math.hypot(dx,dy,dz)||1; gb.n[i*3]=dx/l; gb.n[i*3+1]=dy/l; gb.n[i*3+2]=dz/l;
+      const f=0.62+0.45*clamp(dy/l*0.6+0.45,0,1); gb.c[i*3]*=f; gb.c[i*3+1]*=f; gb.c[i*3+2]*=f; } };
+  { const rnd=mulberry32(5), tr=new GB(), cn=new GB(), br=C('#5d4a3a');
+    tr.mesh(cylG(0.4,0.6,4.4,10),T(0,2.2,0),br); for(const [ax,az] of [[1.6,0.4],[-1.3,1.1],[-0.3,-1.7],[0.9,-1.0],[0.2,1.6]]){ const L=4.4; tr.mesh(cylG(0.12,0.28,L,7),TR(ax*0.9,4.1+L*0.36,az*0.9,Math.atan2(az,3)*1.1,0,-Math.atan2(ax,3)*1.1),br); }
+    for(const b of [[0,8.5,0,5.2,2.2,5.0,60],[3.6,7.6,1.2,3.6,1.7,3.4,26],[-3.4,7.5,2.0,3.6,1.7,3.4,26],[-1.0,7.4,-3.5,3.7,1.7,3.4,26],[2.5,7.3,-2.9,3.3,1.6,3.2,22]]) cards(cn,b[0],b[1],b[2],b[3],b[4],b[5],b[6],1.55,rnd);
+    INST.treeHi={lod:'near',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:cn.build(),m:()=>MAT.leafCard,depth:()=>MAT.leafCardDepth,cast:true,tint:true}]}; }
+  { const rnd=mulberry32(9), cn=new GB(); cards(cn,0,0.75,0,1.0,0.7,1.0,16,0.55,rnd); cards(cn,0.45,0.9,0.3,0.6,0.5,0.6,8,0.45,rnd);
+    INST.shrubHi={lod:'near',parts:[{g:cn.build(),m:()=>MAT.leafCard,cast:false,tint:true}]}; }
   { // rain tree / big roadside tree
     const tr=new GB(), cn=new GB(); const br=C('#5d4a3a');
     tr.cyl(0,0,0,0.42,0.62,4.2,br,8);
@@ -1169,7 +1246,7 @@ function buildInstGeos(){
     const greens=['#3f6b2a','#4d7a30','#35602a','#5a8a38','#476f2c'];
     const blobs=[[0,8.6,0,5.4,2.5,5.2],[3.7,7.6,1.2,4.0,1.9,3.8],[-3.5,7.5,2.0,4.0,1.9,3.7],[-1.0,7.4,-3.6,4.1,1.9,3.8],[2.6,7.3,-3.0,3.6,1.7,3.5]];
     blobs.forEach((b,i)=>{ cn.ico(b[0],b[1],b[2],b[3],b[4],b[5],C(greens[i%greens.length]),1,i*1.3); }); shadeCanopy(cn,0);
-    INST.tree={lod:'mid',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:cn.build(),m:()=>MAT.canopy,cast:true,tint:true}]};
+    INST.tree={lod:'midx',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:cn.build(),m:()=>MAT.canopy,cast:true,tint:true}]};
   }
   { // banana plant
     const st=new GB(), lf=new GB(); st.cyl(0,0,0,0.1,0.15,1.7,C('#7a9a45'),6);
@@ -1178,7 +1255,8 @@ function buildInstGeos(){
     INST.banana={lod:'near',parts:[{g:st.build(),m:()=>MAT.plain,cast:false},{g:lf.build(),m:()=>MAT.banana,cast:false}]};
   }
   { const cn=new GB(); cn.ico(0,0.55,0,1.0,0.7,1.0,C('#4f7d2e'),1); cn.ico(0.5,0.75,0.3,0.7,0.55,0.7,C('#5d8a34'),1,1); shadeCanopy(cn,0);
-    INST.shrub={lod:'near',parts:[{g:cn.build(),m:()=>MAT.canopy,cast:false,tint:true}]}; }
+    INST.shrub={lod:'midx',parts:[{g:cn.build(),m:()=>MAT.canopy,cast:false,tint:true}]}; }
+  for(const t of ['palm','tree','shrub']) INST[t+'M']={lod:t==='shrub'?'near':'mid',parts:INST[t].parts};
   { // mangrove clump
     const tr=new GB(), cn=new GB(); const rc=C('#4a3f33'); for(let k=0;k<6;k++){ const a=k/6*TAU; tr.mesh(cylG(0.05,0.07,2.2,5), TR(Math.cos(a)*0.7,0.9,Math.sin(a)*0.7, Math.sin(a)*0.6,0,-Math.cos(a)*0.6), rc); }
     cn.ico(0,2.6,0,2.6,1.3,2.6,C('#3d6a34'),1); cn.ico(1.4,2.9,0.8,1.8,1.0,1.8,C('#47763a'),1,1); cn.ico(-1.2,2.4,-1,1.9,1.0,1.9,C('#36602e'),1,2); shadeCanopy(cn,0);
@@ -1434,7 +1512,7 @@ const _im=new THREE.Matrix4(), _ic=new THREE.Color(), STATS={};
 function finalizeBatches(scene){
   let meshes=0, tris=0;
   for(const B of BATCHES){ if(B.done) continue; B.done=true;
-    B.grp={near:new THREE.Group(),mid:new THREE.Group(),far:new THREE.Group()};
+    B.grp={near:new THREE.Group(),mid:new THREE.Group(),midx:new THREE.Group(),far:new THREE.Group()};
     for(const key in B.g){ const gb=B.g[key]; if(gb.empty) continue; const [mf,lod,cast]=MATKEYS[key]; tris+=gb.i.length/3; STATS[key]=(STATS[key]||0)+gb.i.length/3; const m=new THREE.Mesh(gb.build(),mf()); m.castShadow=cast; m.receiveShadow=true; m.matrixAutoUpdate=false; B.grp[lod].add(m); meshes++; }
     B.g={};
     for(const type in B.inst){ const arr=B.inst[type], n=arr.length/10, def=INST[type]; if(!def||!n) continue; STATS['#'+type]=(STATS['#'+type]||0)+n;
@@ -1444,13 +1522,13 @@ function finalizeBatches(scene){
         m.castShadow=!!part.cast; m.receiveShadow=true; if(part.depth) m.customDepthMaterial=part.depth(); m.matrixAutoUpdate=false; B.grp[def.lod].add(m); meshes++; tris+=n*(part.g.index?part.g.index.count/3:0); } }
     B.inst={};
     for(const ex of B.extra){ B.grp[ex.lod||'near'].add(ex.mesh); meshes++; }
-    for(const k of ['near','mid','far']){ if(B.grp[k].children.length){ B.grp[k].matrixAutoUpdate=false; scene.add(B.grp[k]); } }
+    for(const k of ['near','mid','midx','far']){ if(B.grp[k].children.length){ B.grp[k].matrixAutoUpdate=false; scene.add(B.grp[k]); } }
   }
   return {meshes,tris};
 }
 const LOD={near:270,mid:640,far:1500,scale:1};
 function updateLOD(cam){ const cx=cam.position.x, cz=cam.position.z, s=LOD.scale;
-  for(let i=0;i<BATCHES.length;i++){ const B=BATCHES[i]; if(!B.grp) continue; const d=Math.hypot(B.x-cx,B.z-cz)-B.r; B.grp.near.visible=d<LOD.near*s; B.grp.mid.visible=d<LOD.mid*s; B.grp.far.visible=d<LOD.far; } }
+  for(let i=0;i<BATCHES.length;i++){ const B=BATCHES[i]; if(!B.grp) continue; const d=Math.hypot(B.x-cx,B.z-cz)-B.r; B.grp.near.visible=d<LOD.near*s; B.grp.mid.visible=d<LOD.mid*s; B.grp.midx.visible=d>=LOD.near*s&&d<LOD.mid*s; B.grp.far.visible=d<LOD.far; } }
 
 /* =====================================================================
    LandmarkManager (A) — old city & coast
@@ -2708,7 +2786,7 @@ const Env = { cur:null, tgt:null, sunDir:new V3(), time:0, wet:0.18, envT:0,
   update(dt,cam,fx,fy,fz){
     this.time+=dt; if(this.mix<1){ this.mix=Math.min(1,this.mix+dt/2.2); this.apply(this.mix); }
     if(this.envT>0){ this.envT-=dt; if(this.envT<=0) this.bakeEnv(); }
-    this.skyU.uTime.value=this.time; this.seaU.uTime.value=this.time; this.sky.position.copy(cam.position); this.hills.position.set(cam.position.x,0,cam.position.z);
+    this.skyU.uTime.value=this.time; this.seaU.uTime.value=this.time; WIND.uTime.value=this.time; this.sky.position.copy(cam.position); this.hills.position.set(cam.position.x,0,cam.position.z);
     this.sea.position.y=-0.25+Math.sin(this.time*0.55)*0.09; this.seaU.uShoreX.value=-1178+(this.sea.position.y+0.105)/0.03;
     const sx=Math.round(fx/3)*3, sz=Math.round(fz/3)*3; this.sun.position.set(sx+this.sunDir.x*300,fy+this.sunDir.y*300,sz+this.sunDir.z*300); this.sun.target.position.set(sx,fy,sz); this.sun.target.updateMatrixWorld();
     if(this.rain.visible){ this.rainU.uTime.value=this.time; this.rainU.uCam.value.copy(cam.position); }
