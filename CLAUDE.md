@@ -29,6 +29,9 @@
 - Don't put `//` comments in the middle of minified one-line statements — it comments out the rest of the line. Check with an inline-script syntax pass before testing.
 - The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
+## Street props
+- `loadProps`/`registerProps` bake owner-supplied cones, road signs, bicycles (`public/assets/props`) into instanced `INST.p_*` types. Signs at signal approaches (60%), roadwork cone rings around ~18% of manholes, bicycles at ~8% of shopfronts, KSRTC shelters at every bus route end (`Buses.shelter`).
+
 ## Route buses
 - `Buses` (index.html): 4 KSRTC routes between TRAVEL places (`ROUTES`), path found on the road graph (Dijkstra), 2 buses each, keep-left lane. Position is a pure function of the shared clock (`Net.tOff` from the server's `now` in the welcome message), so every client sees the same bus with no extra network traffic. 9 m/s, 25 s stop at each end.
 - Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).

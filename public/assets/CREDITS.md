@@ -12,6 +12,7 @@ All files here are CC0 (public domain). Credit is given as a courtesy.
 | `chars/men_{casual,longsleeve,shirt,suit}.glb` | Quaternius — Animated Men pack (Smooth_Male_*), supplied by the project owner; FBX → GLB, clips Idle/Walk/Run/Jump/Sitting kept | CC0 1.0 (License.txt in pack) |
 | `veh/NormalCar1, NormalCar2, SUV, SportsCar2.glb` | Quaternius — car pack, supplied by the project owner; OBJ → GLB | CC0 1.0 (License.txt in pack) |
 | `veh/Ambulance, Bus, SchoolBus.glb` | Quaternius-style public transport pack, supplied by the project owner (no licence file included in the download — owner to confirm); OBJ → GLB | see note |
+| `props/TrafficCone, TrafficSign1-3, Bicycle.glb` | Owner-supplied public-transport/traffic pack (Quaternius style); OBJ → GLB, recoloured | see note above |
 | `ads/tripla.png` | Supplied by the project owner | — |
 
 Maps were re-encoded as JPEG (quality 78); normal maps are OpenGL convention (NormalGL).
