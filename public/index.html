@@ -2370,10 +2370,11 @@ function seatFor(v,n){ const t=v.type, d=v.d;
   return n<4?[(n%2?1:-1)*d.W*0.24,y,zf-(n>>1)*1.0]:null; }
 function seatIn(v,hs,n){ const s=seatFor(v,n||0); if(!s) return false; v.g.add(hs.g); hs.g.position.set(s[0],s[1],s[2]); if(hs.av){ hs.g.position.y=seatHip(v)-AV_HIP; hs.g.position.z+=0.22; } /* rigged sitting clips put the pelvis 0.54 m up and 0.31 m back */ hs.g.rotation.set(0,0,0); hs.g.visible=true; hs.J.helmet.visible=!!v.d.two; hs.animate(0.016,true); return true; }
 /** lowest free seat, counting remote players already in it; -1 if full */
-function freeSeat(v){ const vi=PVEH.indexOf(v), cap=seatCap(v); for(let n=0;n<cap;n++){ let taken=false; for(const r of Net.remote.values()) if(r.tvi===vi&&r.tsn===n){ taken=true; break; } if(!taken) return n; } return -1; }
+function freeSeat(v){ const vi=v.vid, cap=seatCap(v); for(let n=0;n<cap;n++){ let taken=false; for(const r of Net.remote.values()) if(r.tvi===vi&&r.tsn===n){ taken=true; break; } if(!taken) return n; } return -1; }
 
 /* ---------------- player-drivable vehicle ---------------- */
-const PVEH=[];
+const PVEH=[], PVX=new Map(); // PVX: bought (personal) vehicles by vid >= 1000, also kept in PVEH for updates/collisions
+const vehById=vi=>vi>=1000?PVX.get(vi):PVEH[vi];
 class PVehicle {
   constructor(type,x,z,h,color){ this.type=type; this.color=color; this.remote=null; this.d=VEH[type]; this.x=x; this.z=z; this.y=groundY(x,z,2); this.h=h; this.vx=0; this.vz=0; this.vf=0; this.steer=0; this.pitch=0; this.roll=0; this.spin=0; this.driver=false; this.braking=false; this.impact=0;
     const gt=type==='bus'?'bus':type; this.g=new THREE.Group(); this.g.rotation.order='YXZ';
@@ -2390,7 +2391,7 @@ class PVehicle {
     // contact circles along the length
     const r=this.d.two?0.42:this.d.W/2+0.04, n=this.d.two?1:Math.max(2,Math.round(this.d.L/(r*1.7))); this.cr=r; this.co=[]; for(let i=0;i<n;i++) this.co.push(n===1?0:lerp(-this.d.L/2+r,this.d.L/2-r,i/(n-1)));
     if(VM.ready&&VMAP[gt]&&vmPick(gt,color)){ this.bl.visible=false; for(const m of (this.rl||[]).concat(this.hd||[])) m.visible=false; } // model cars carry their own lamps
-    this.sync(); PVEH.push(this);
+    this.sync(); this.vid=PVEH.length; PVEH.push(this);
   }
   get speed(){ return Math.hypot(this.vx,this.vz); }
   sync(){ this.g.position.set(this.x,this.y,this.z); this.g.rotation.set(this.pitch,this.h,this.roll); }
@@ -2814,35 +2815,38 @@ const Net = {
     ws.onerror=()=>{}; },
   msg(m){
     switch(m.t){
-      case 'w': if(m.now) this.tOff=m.now-Date.now(); this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; if(this.pplBtn) this.pplBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
+      case 'w': if(m.now) this.tOff=m.now-Date.now(); this.id=m.id; this.on=true; if(m.ice) this.ice=m.ice; if(this.micBtn) this.micBtn.style.display='flex'; if(this.pplBtn) this.pplBtn.style.display='flex'; this.initAudio(); this.total=m.total; for(const [id,name,look] of m.players) this.info[id]={name,look}; this.applyVeh(m.vehicles); for(const pv of m.pvs||[]) this.onPV(pv); if(window.__chatBtn) window.__chatBtn.style.display='flex'; UI.toast('Online as '+this.name); this.setInfo(); break;
       case 'j': this.info[m.id]={name:m.name,look:m.look}; this.total=m.total; UI.toast(m.name+' joined'); break;
       case 'l': { this.total=m.total; const r=this.remote.get(m.id); if(r){ this.drop(r); this.remote.delete(m.id); } delete this.info[m.id]; break; }
       case 'p': { const now=performance.now(); for(const a of m.p){ const id=a[0]; if(!this.info[id]) continue; const r=this.ensure(id); r.tx=a[1]; r.ty=a[2]; r.tz=a[3]; r.th=a[4]; r.sp=a[5]; r.og=a[6]; r.tvi=a[7]; r.vf=a[8]; r.st=a[9]; r.tsn=a[10]||0; r.trb=a[11]===undefined?-1:a[11]; r.seen=now; if(!r.init){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; r.init=true; } } break; }
       case 'c': if(this.muted.has(m.name)&&m.id!==this.id) break; this.addChat(m.name,m.text,m.id===this.id); break;
       case 'warn': UI.toast(m.text); break;
+      case 'eco': Eco.msg(m); break;
+      case 'pv': this.onPV(m); break;
+      case 'lk': this.onLook(m.id,m.look); break;
       case 'sig': this.onSig(m.from,m.d); break;
       case 'ph': if(window.Phone) Phone.onMsg(m); break;
       case 'v': this.applyVeh([[m.vi,m.x,m.y,m.z,m.h,m.occ]]); break;
-      case 'deny': { const dv=Player.veh; if(dv&&PVEH.indexOf(dv)===m.vi&&Player.seat===m.sn){ if(m.sn+1<seatCap(dv)){ Player.seat=m.sn+1; dv.driver=false; if(!seatIn(dv,Player,Player.seat)) Player.g.visible=false; UI.toast('Riding as passenger'); } else { Player.exit(Game.scene); UI.toast('That vehicle is full'); } } break; }
+      case 'deny': { const dv=Player.veh; if(dv&&dv.vid===m.vi&&Player.seat===m.sn){ if(m.sn+1<seatCap(dv)){ Player.seat=m.sn+1; dv.driver=false; if(!seatIn(dv,Player,Player.seat)) Player.g.visible=false; UI.toast('Riding as passenger'); } else { Player.exit(Game.scene); UI.toast('That vehicle is full'); } } break; }
     } },
-  applyVeh(list){ for(const [vi,x,y,z,h,oc] of list||[]){ const v=PVEH[vi]; if(!v||v===Player.veh) continue; const occ=oc&&oc[0]; if(!occ||occ===this.id){ v.x=x; v.y=y; v.z=z; v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.remote=null; v.sync(); } else { v.remote=occ; } } },
+  applyVeh(list){ for(const [vi,x,y,z,h,oc] of list||[]){ const v=vehById(vi); if(!v||v===Player.veh) continue; const occ=oc&&oc[0]; if(!occ||occ===this.id){ v.x=x; v.y=y; v.z=z; v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.remote=null; v.sync(); } else { v.remote=occ; } } },
   ensure(id){ let r=this.remote.get(id); if(r) return r; const inf=this.info[id], hh=buildPerson(inf.look||{}); const human={g:hh.root,J:hh.J,av:hh.av,seat:0,t:0,ph:Math.random()*6,air:0,speed:0,onGround:true,animate:Player.animate};
     Game.scene.add(hh.root); const lab=document.createElement('div'); lab.className='nm'; lab.textContent=inf.name; document.getElementById('hud').appendChild(lab);
     r={id,human,lab,x:0,y:0,z:0,h:0,tx:0,ty:0,tz:0,th:0,sp:0,og:1,vf:0,st:0,vi:-1,tvi:-1,sn:0,tsn:0,seen:performance.now(),init:false,mounted:null}; this.remote.set(id,r); return r; },
-  claim(r){ const v=PVEH[r.vi]; if(!v) return; const hs=r.human; r.sn=r.tsn; hs.seat=r.sn; if(r.sn===0) v.remote=r.id; if(seatIn(v,hs,r.sn)) r.mounted=v; },
-  release(r){ const hs=r.human; if(r.mounted){ r.mounted.g.remove(hs.g); Game.scene.add(hs.g); hs.J.helmet.visible=false; r.mounted=null; } const v=PVEH[r.vi]; if(v&&r.sn===0&&v.remote===r.id){ v.remote=null; v.vx=v.vz=v.vf=0; if(Player.veh===v&&Player.seat>0){ Player.seat=0; v.driver=true; UI.toast('You are driving now'); } } hs.g.visible=true; r.vi=-1; },
+  claim(r){ const v=vehById(r.vi); if(!v) return; const hs=r.human; r.sn=r.tsn; hs.seat=r.sn; if(r.sn===0) v.remote=r.id; if(seatIn(v,hs,r.sn)) r.mounted=v; },
+  release(r){ const hs=r.human; if(r.mounted){ r.mounted.g.remove(hs.g); Game.scene.add(hs.g); hs.J.helmet.visible=false; r.mounted=null; } const v=vehById(r.vi); if(v&&r.sn===0&&v.remote===r.id){ v.remote=null; v.vx=v.vz=v.vf=0; if(Player.veh===v&&Player.seat>0){ Player.seat=0; v.driver=true; UI.toast('You are driving now'); } } hs.g.visible=true; r.vi=-1; },
   drop(r){ const pp=this.peers.get(r.id); if(pp) this.hangup(r.id,pp); this.release(r); Game.scene.remove(r.human.g); if(r.lab.parentNode) r.lab.parentNode.removeChild(r.lab); },
   clearRemotes(){ for(const r of this.remote.values()) this.drop(r); this.remote.clear(); this.info={}; },
   sendState(){ const ws=this.ws; if(!ws||ws.readyState!==1) return; const P=Player, v=P.veh, q=n=>Math.round(n*100)/100;
-    const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:PVEH.indexOf(v),sn:P.seat,vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,sn:0,vf:0,st:0};
+    const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:v.vid,sn:P.seat,vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,sn:0,vf:0,st:0};
     ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st),rb:P.bus?P.bus.b.id*100+P.bus.seat:-1})); },
   update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
     const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); this.renderPeople(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
-      if(Math.hypot(r.tx-r.x,r.tz-r.z)>25){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; const pv=r.vi>=0?PVEH[r.vi]:null; if(pv&&pv===Player.veh&&r.sn===0){ pv.x=r.x; pv.y=r.y; pv.z=r.z; pv.h=r.h; Player.x=r.x; Player.y=r.y; Player.z=r.z; Player.h=r.h; Cam.snap(Player); Game.refreshWorld(r.x,r.z); } }
+      if(Math.hypot(r.tx-r.x,r.tz-r.z)>25){ r.x=r.tx; r.y=r.ty; r.z=r.tz; r.h=r.th; const pv=r.vi>=0?vehById(r.vi):null; if(pv&&pv===Player.veh&&r.sn===0){ pv.x=r.x; pv.y=r.y; pv.z=r.z; pv.h=r.h; Player.x=r.x; Player.y=r.y; Player.z=r.z; Player.h=r.h; Cam.snap(Player); Game.refreshWorld(r.x,r.z); } }
       r.x+=(r.tx-r.x)*k; r.y+=(r.ty-r.y)*k; r.z+=(r.tz-r.z)*k; r.h+=angDiff(r.h,r.th)*k;
       if(r.vi!==r.tvi||(r.vi>=0&&r.sn!==r.tsn)){ this.release(r); r.vi=r.tvi; if(r.vi>=0) this.claim(r); }
-      const hs=r.human; hs.speed+=(r.sp-hs.speed)*k; hs.onGround=!!r.og; const v=r.vi>=0?PVEH[r.vi]:null;
+      const hs=r.human; hs.speed+=(r.sp-hs.speed)*k; hs.onGround=!!r.og; const v=r.vi>=0?vehById(r.vi):null;
       if(v&&r.sn!==0){ if(r.mounted){ hs.g.visible=true; hs.animate(dt,true); } else hs.g.visible=false; }
       else if(v){ v.remote=r.id; v.x=r.x; v.y=r.y; v.z=r.z; v.h=r.h; v.vx=v.vz=0; v.vf=r.vf; v.steer=r.st; v.pitch=0; v.roll=0; v.spin+=r.vf/v.d.wr*dt; for(const w of v.wheels){ w.m.rotation.x=v.spin; if(w.front) w.piv.rotation.y=v.steer; } v.sync();
         if(r.mounted){ hs.g.visible=true; hs.animate(dt,true); } else hs.g.visible=false; }
@@ -2889,6 +2893,13 @@ const Net = {
     if(this.myAn&&lv&&this.micBtn){ const b=new Uint8Array(this.myAn.fftSize); this.myAn.getByteTimeDomainData(b); let m=0; for(let i=0;i<b.length;i++){ const v=Math.abs(b[i]-128); if(v>m) m=v; } this.micBtn.classList.toggle('talk',this.micOn&&m>6); } },
   openChat(){ if(!this.on||window.__typing) return; window.__typing=true; Input.k={}; this.chatIn.style.display='block'; this.log.classList.add('open'); this.chatIn.focus(); },
   closeChat(send){ const el=this.chatIn, t=el.value.trim(); if(send&&t&&this.ws&&this.ws.readyState===1) this.ws.send(JSON.stringify({t:'c',text:t.slice(0,140)})); el.value=''; el.style.display='none'; el.blur(); window.__typing=false; this.log.classList.remove('open'); const c=document.getElementById('c'); if(c) c.focus(); },
+  /* bought vehicles: created on every client with the server-chosen vid (1000+) */
+  onPV(m){ const old=PVX.get(m.vid); if(old){ if(Player.veh===old) Player.exit(Game.scene); for(const r of this.remote.values()) if(r.mounted===old) this.release(r); Game.scene.remove(old.g); PVX.delete(m.vid); const i=PVEH.indexOf(old); if(i>=0) PVEH.splice(i,1); }
+    if(m.gone) return; const v=new PVehicle(m.type,m.x,m.z,m.h,m.color); v.vid=m.vid; v.owner=m.owner; PVX.set(m.vid,v); Game.scene.add(v.g);
+    if(m.owner===this.id&&!Player.veh&&!Player.bus){ setTimeout(()=>{ if(!Player.veh){ Player.enter(v,Game.scene); UI.fade(); } },150); } },
+  /* outfit changed (bought / worn): rebuild that player's avatar */
+  onLook(id,look){ if(id===this.id){ Object.assign(MYLOOK,look); try{ localStorage.setItem('kzk_look',JSON.stringify(MYLOOK)); }catch(e){} if(Player.veh||Player.bus) return; const sc=Game.scene, hh=buildPerson(MYLOOK); sc.remove(Player.g); Player.g=hh.root; Player.J=hh.J; Player.av=hh.av; Player.g.position.set(Player.x,Player.y,Player.z); Player.g.rotation.y=Player.h; sc.add(Player.g); return; }
+    if(this.info[id]) this.info[id].look=look; const r=this.remote.get(id); if(r){ this.drop(r); this.remote.delete(id); } },
   isMuted(id){ return this.muted.has((this.info[id]||{}).name); },
   setMuted(name,on){ if(on) this.muted.add(name); else this.muted.delete(name); try{ localStorage.setItem('kzk_muted',JSON.stringify([...this.muted])); }catch(e){} UI.toast(on?name+' muted':name+' unmuted'); this.renderPeople(); },
   report(id){ const inf=this.info[id]; if(!inf||!this.ws||this.ws.readyState!==1) return; const reason=prompt('Report '+inf.name+'? Optional reason:',''); if(reason===null) return; this.ws.send(JSON.stringify({t:'rep',id,reason:reason.slice(0,200)})); },
@@ -3169,7 +3180,7 @@ const UI = { area:null, titleT:0, toastT:0, mapOn:true, frame:0,
     if(this.titleT>0){ this.titleT-=dt; if(this.titleT<=0) $('title').classList.remove('on'); }
     if(this.toastT>0){ this.toastT-=dt; if(this.toastT<=0) $('toast').classList.remove('on'); }
     const sp=$('speed'); if(v){ sp.classList.add('on'); if(this.frame%4===0) $('kmh').textContent=Math.round(Math.abs(v.vf)*3.6); } else sp.classList.remove('on');
-    let pr=''; if(Game.playing&&P.bus){ const b=P.bus.b; pr=b.dwell?'<kbd>E</kbd> Get off'+(b.stop>=0?' · '+b.r.ends[b.stop].en:''):b.reqStop?'Stopping…':'<kbd>E</kbd> Stop bus · next: '+b.r.ends[b.dir].en; } else if(Game.playing&&!v&&Buses.nearestStop(P.x,P.z)){ const b=Buses.nearestStop(P.x,P.z); pr='<kbd>E</kbd> Board bus to '+b.r.ends[b.dir].en; } else if(Game.playing){ if(v){ if(Math.abs(v.vf)<4) pr='<kbd>E</kbd> Exit vehicle'; } else { const nv=P.nearestVehicle(); if(nv) pr='<kbd>E</kbd> Enter '+VNAME[nv.type]; } }
+    let pr=''; const ep=Game.playing&&!v?Eco.prompt():''; if(ep) pr=ep; else if(Game.playing&&P.bus){ const b=P.bus.b; pr=b.dwell?'<kbd>E</kbd> Get off'+(b.stop>=0?' · '+b.r.ends[b.stop].en:''):b.reqStop?'Stopping…':'<kbd>E</kbd> Stop bus · next: '+b.r.ends[b.dir].en; } else if(Game.playing&&!v&&Buses.nearestStop(P.x,P.z)){ const b=Buses.nearestStop(P.x,P.z); pr='<kbd>E</kbd> Board bus to '+b.r.ends[b.dir].en; } else if(Game.playing){ if(v){ if(Math.abs(v.vf)<4) pr='<kbd>E</kbd> Exit vehicle'; } else { const nv=P.nearestVehicle(); if(nv) pr='<kbd>E</kbd> Enter '+VNAME[nv.type]; } }
     if(pr!==this.pr){ this.pr=pr; const p=$('prompt'); p.innerHTML=pr; p.classList.toggle('on',!!pr); }
     if(this.mapOn&&this.frame%2===0) this.drawMap(x,z,Cam.yaw,P);
   },
@@ -3183,9 +3194,101 @@ const UI = { area:null, titleT:0, toastT:0, mapOn:true, frame:0,
     g.setLineDash([4,3]); g.strokeStyle='#0c1a1c'; g.lineWidth=2; g.beginPath(); g.moveTo(RAIL_X*sc,(pz-R_)*sc); g.lineTo(RAIL_X*sc,(pz+R_)*sc); g.stroke(); g.setLineDash([]);
     g.fillStyle='#ffffff'; for(const v of PVEH){ if(v===P.veh||Math.abs(v.x-px)>R_||Math.abs(v.z-pz)>R_) continue; g.fillRect(v.x*sc-2,v.z*sc-2,4,4); }
     g.fillStyle='#f2b84b'; for(const t of TRAVEL){ if(Math.abs(t[1]-px)>R_||Math.abs(t[2]-pz)>R_) continue; g.beginPath(); g.arc(t[1]*sc,t[2]*sc,3.4,0,TAU); g.fill(); }
+    Eco.drawMap(g,sc,px,pz,R_);
     g.restore(); g.save(); g.translate(c,c); g.rotate(PI-P.h+yaw); g.fillStyle='#c8102e'; g.strokeStyle='#fff'; g.lineWidth=1.5; g.beginPath(); g.moveTo(0,-8); g.lineTo(6,7); g.lineTo(0,3.5); g.lineTo(-6,7); g.closePath(); g.fill(); g.stroke(); g.restore();
     g.save(); g.translate(c,c); g.rotate(yaw); g.fillStyle='#f6efe0'; g.font='700 11px sans-serif'; g.textAlign='center'; g.fillText('N',0,-c+14); g.restore(); },
 };
+
+/* =====================================================================
+   Eco (client): wallet HUD, job markers, missions, shops, personal vehicles.
+   The server decides money, prices, rewards, mission progress and ownership (economy.js); this only shows
+   state and sends intents (accept / buy / wear / spawn).
+   ===================================================================== */
+const inr=n=>'₹'+Math.round(n).toLocaleString('en-IN');
+const Eco={ ready:false, cash:0, xp:0, level:1, jobs:0, owned:[], outfit:{}, spots:[], catalog:{}, mission:null, route:null, routeT:0, marks:[],
+  send(o){ if(Net.ws&&Net.ws.readyState===1) Net.ws.send(JSON.stringify(Object.assign({t:'eco'},o))); },
+  css(){ const st=document.createElement('style'); st.textContent=`
+#eco-hud{position:absolute;right:18px;top:16px;text-align:right;font:800 1.25rem var(--display);color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.6);pointer-events:auto;cursor:pointer;display:none}
+#eco-hud small{display:block;font:700 .66rem var(--text);letter-spacing:.12em;opacity:.85}
+#eco-delta{position:absolute;right:18px;top:62px;font:800 1rem var(--display);opacity:0;transition:opacity .4s,transform .8s;pointer-events:none}
+#eco-mis{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(12,18,20,.62);backdrop-filter:blur(8px);border-radius:10px;padding:.45rem .9rem;text-align:center;font:600 .82rem var(--text);display:none;min-width:200px}
+#eco-mis b{display:block;font:800 .72rem var(--text);letter-spacing:.14em;color:var(--gold)}#eco-mis .r{display:flex;justify-content:center;gap:.8rem;opacity:.9;margin-top:.15rem;font-size:.76rem}
+#eco-card{position:absolute;left:50%;top:30%;transform:translate(-50%,-50%) scale(.9);background:rgba(10,14,18,.86);backdrop-filter:blur(10px);border-radius:14px;padding:1.1rem 1.6rem;text-align:center;min-width:260px;opacity:0;transition:opacity .35s,transform .35s;pointer-events:none}
+#eco-card.on{opacity:1;transform:translate(-50%,-50%) scale(1)}#eco-card h3{margin:0 0 .4rem;font:800 1.1rem var(--display);letter-spacing:.08em;color:var(--gold)}#eco-card .l{display:flex;justify-content:space-between;gap:2rem;font:600 .9rem var(--text)}#eco-card .t{border-top:1px solid rgba(255,255,255,.15);margin-top:.35rem;padding-top:.35rem;font-weight:800}
+#eco-shop{position:absolute;right:18px;top:90px;width:300px;max-height:70vh;overflow:auto;background:rgba(10,14,18,.86);backdrop-filter:blur(10px);border-radius:12px;padding:.7rem .8rem;display:none;pointer-events:auto;font:600 .85rem var(--text)}
+#eco-shop h3{margin:.1rem 0 .5rem;font:800 1rem var(--display)}#eco-shop .it{display:flex;align-items:center;gap:.5rem;padding:.35rem 0;border-top:1px solid rgba(255,255,255,.08)}#eco-shop .it span{flex:1}#eco-shop .sw{width:16px;height:16px;border-radius:4px;border:1px solid #fff5}
+#eco-shop button{font:700 .74rem var(--text);border:0;border-radius:6px;padding:.35rem .6rem;cursor:pointer;background:var(--gold);color:#111}#eco-shop button.g{background:#e0e0e0}#eco-shop .x{float:right;background:#444;color:#fff}
+@media (pointer:coarse){#eco-hud{top:auto;bottom:250px;right:12px;font-size:1rem}#eco-shop{left:12px;right:12px;width:auto;top:70px}#eco-mis{top:58px;min-width:160px}}`; document.head.appendChild(st); },
+  init(){ this.css(); const hud=document.getElementById('hud'), mk=(id)=>{ const e=document.createElement('div'); e.id=id; hud.appendChild(e); return e; };
+    this.hud=mk('eco-hud'); this.delta=mk('eco-delta'); this.mis=mk('eco-mis'); this.card=mk('eco-card'); this.shop=mk('eco-shop');
+    this.hud.addEventListener('pointerdown',e=>{ e.preventDefault(); this.openWallet(); }); },
+  msg(m){ switch(m.k){
+    case 'me': { const first=!this.ready; Object.assign(this,{cash:m.cash,xp:m.xp,level:m.level,jobs:m.jobs,owned:m.owned,outfit:m.outfit,spots:m.spots,catalog:m.catalog,mission:m.mission,ready:true});
+      if(first) this.buildMarks(); this.renderHud(); this.renderMission();
+      if(m.fresh&&Game.playing){ const s=this.spots.find(x=>x.id==='nazeer'); if(s){ Game.teleport(s.x-6,s.z-4,0,true); } this.showCard('WELCOME TO KOZHIKODE','<div style="font:600 .9rem var(--text);max-width:300px">Earn money by taking jobs around the city. Look for the job markers on your map.<br><br><b>Starter goal:</b> earn your first ₹5,000.<br>Talk to <b>Nazeer</b> right here on Mavoor Road.</div>',9); }
+      if(this.shopOpen) this.openShop(this.shopOpen); break; }
+    case 'mission': this.mission=m.mission; this.route=null; this.renderMission(); if(m.note) UI.toast(m.note,3); Audio_.beep&&Audio_.beep(660,880,0.12,0.05,0); break;
+    case 'done': { this.mission=null; this.route=null; this.renderMission(); const up=m.level>this.level; this.level=m.level; this.money(m.cash); this.jobs=m.jobs; this.xp+=m.xp;
+      this.showCard(m.title,'<div style="font:600 .85rem var(--text);opacity:.85;margin-bottom:.4rem">'+m.item+'</div><div class="l"><span>Base</span><span>'+inr(m.base)+'</span></div>'+(m.bonus?'<div class="l"><span>Fast delivery</span><span>'+inr(m.bonus)+'</span></div>':'')+'<div class="l t"><span>Total</span><span>'+inr(m.total)+'</span></div><div style="margin-top:.4rem;font:700 .8rem var(--text);color:var(--gold)">+'+m.xp+' XP'+(up?' · LEVEL '+m.level+'!':'')+'</div>',5);
+      Audio_.beep&&Audio_.beep(880,1320,0.25,0.06,0); if(this.cash>=6000&&!this.owned.some(i=>(this.catalog[i]||{}).kind==='vehicle')&&!this.toldScooter){ this.toldScooter=true; setTimeout(()=>UI.toast('You can afford a scooter! Visit Calicut Two Wheelers near the Railway Station.',6),5500); } break; }
+    case 'fail': this.mission=null; this.route=null; this.renderMission(); this.showCard(m.title+' FAILED','<div style="font:600 .85rem var(--text)">'+m.why+'<br>No reward. Take another job any time.</div>',4); break;
+    case 'bought': this.money(m.cash); this.showCard(this.catalog[m.item]&&this.catalog[m.item].kind==='vehicle'?'VEHICLE PURCHASED':'PURCHASED','<div style="font:700 1rem var(--text)">'+m.name+'</div><div style="font:600 .8rem var(--text);opacity:.8;margin-top:.3rem">'+(this.catalog[m.item]&&this.catalog[m.item].kind==='vehicle'?'Added to your garage — open your wallet (tap ₹) to ride it.':'Now wearing it.')+'</div>',4); break;
+    case 'err': UI.toast(m.text,3.5); break;
+    case 'txs': this.txs=m.list; this.openWallet(true); break; } },
+  money(v){ const d=v-this.cash; this.cash=v; this.renderHud(); if(!d) return; const e=this.delta; e.textContent=(d>0?'+ ':'− ')+inr(Math.abs(d)); e.style.color=d>0?'#7CFC9A':'#ff8a80'; e.style.transition='none'; e.style.opacity=1; e.style.transform='translateY(0)'; void e.offsetWidth; e.style.transition='opacity .6s 1.8s,transform 2.4s'; e.style.opacity=0; e.style.transform='translateY(-18px)'; },
+  renderHud(){ if(!this.ready) return; this.hud.style.display='block'; this.hud.innerHTML=inr(this.cash)+'<small>LEVEL '+this.level+'</small>'; },
+  renderMission(){ const m=this.mission, e=this.mis; if(!m){ e.style.display='none'; return; } e.style.display='block'; const d=this.route?this.route.len:Math.hypot(m.target.x-Player.x,m.target.z-Player.z);
+    const left=Math.max(0,m.limit-((performance.now()-(m._t0||(m._t0=performance.now()-(m.limit-m.left)*1000)))/1000)), mm=Math.floor(left/60), ss=String(Math.floor(left%60)).padStart(2,'0');
+    e.innerHTML='<b>'+m.title+'</b>'+(m.stage===0?'Pick up '+m.item+' · '+m.from:'Deliver to '+m.to)+'<div class="r"><span>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+'</span><span>'+(left>0?mm+':'+ss:'late — no bonus')+'</span><span>'+inr(m.base)+(m.bonus&&left>0?' +'+inr(m.bonus):'')+'</span></div>'; },
+  showCard(title,html,secs){ const c=this.card; c.innerHTML='<h3>'+title+'</h3>'+html; c.classList.add('on'); clearTimeout(this.cardT); this.cardT=setTimeout(()=>c.classList.remove('on'),(secs||4)*1000); },
+  /* ---- world + map markers ---- */
+  iconTex(kind){ const c=cv(128,128), g=c.getContext('2d'); const col={food:'#e65100',dealer:'#1565c0',cloth:'#6a1b9a',dest:'#2e7d32'}[kind]||'#333';
+    g.fillStyle='rgba(0,0,0,.25)'; g.beginPath(); g.arc(64,68,52,0,TAU); g.fill(); g.fillStyle=col; g.beginPath(); g.arc(64,64,52,0,TAU); g.fill(); g.lineWidth=6; g.strokeStyle='#fff'; g.stroke(); this.glyph(g,kind,64,64,1.4); return mkTex(c,false); },
+  glyph(g,kind,x,y,s){ g.save(); g.translate(x,y); g.scale(s,s); g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineWidth=4; g.lineCap='round';
+    if(kind==='food'){ g.beginPath(); g.arc(0,2,20,0,PI); g.closePath(); g.fill(); for(const dx of[-9,0,9]){ g.beginPath(); g.moveTo(dx,-6); g.bezierCurveTo(dx-5,-12,dx+5,-16,dx,-24); g.stroke(); } }
+    else if(kind==='dealer'){ g.lineWidth=4; g.beginPath(); g.arc(-13,10,8,0,TAU); g.stroke(); g.beginPath(); g.arc(14,10,8,0,TAU); g.stroke(); g.beginPath(); g.moveTo(-13,10); g.lineTo(-2,-4); g.lineTo(12,-4); g.lineTo(14,10); g.moveTo(8,-4); g.lineTo(5,-16); g.lineTo(13,-16); g.stroke(); }
+    else if(kind==='cloth'){ g.beginPath(); g.moveTo(-8,-20); g.lineTo(-22,-12); g.lineTo(-16,-2); g.lineTo(-11,-5); g.lineTo(-11,20); g.lineTo(11,20); g.lineTo(11,-5); g.lineTo(16,-2); g.lineTo(22,-12); g.lineTo(8,-20); g.quadraticCurveTo(0,-12,-8,-20); g.fill(); }
+    else { g.beginPath(); g.moveTo(0,22); g.bezierCurveTo(-20,0,-16,-22,0,-22); g.bezierCurveTo(16,-22,20,0,0,22); g.fill(); g.fillStyle='#2e7d32'; g.beginPath(); g.arc(0,-6,7,0,TAU); g.fill(); }
+    g.restore(); },
+  buildMarks(){ const sc=Game.scene; this.marks.forEach(m=>sc.remove(m)); this.marks=[]; this.tex={};
+    const ring=(col)=>{ const m=new THREE.Mesh(new THREE.RingGeometry(1.1,1.35,40),new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.7,depthWrite:false})); m.rotation.x=-PI/2; return m; };
+    const mk=(kind,x,z)=>{ const t=this.tex[kind]||(this.tex[kind]=this.iconTex(kind)); const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:true})); sp.scale.set(1.3,1.3,1); const g=new THREE.Group(); const y=groundY(x,z,3); sp.position.set(0,2.9,0); g.add(sp); const r=ring(kind==='dest'?0x66ff99:0xffd54f); r.position.y=0.06; g.add(r); g.position.set(x,y,z); sc.add(g); this.marks.push(g); return g; };
+    for(const s of this.spots) s.mark=mk(s.kind,s.x,s.z); this.target=mk('dest',0,0); this.target.visible=false; },
+  nearSpot(){ if(!this.ready||Player.veh||Player.bus) return null; let b=null,bd=8; for(const s of this.spots){ const d=Math.hypot(s.x-Player.x,s.z-Player.z); if(d<bd){ bd=d; b=s; } } return b; },
+  prompt(){ const s=this.nearSpot(); if(!s) return ''; return '<kbd>E</kbd> '+(s.kind==='food'?(this.mission?'Job in progress':'Start delivery job · '+s.name):s.kind==='dealer'?'Browse vehicles · '+s.name:'Shop clothes · '+s.name); },
+  interact(){ const s=this.nearSpot(); if(!s) return false; if(s.kind==='food'){ if(this.mission) UI.toast('Finish your current job first'); else this.send({k:'accept',spot:s.id}); } else this.openShop(s.id); return true; },
+  openShop(id){ const s=this.spots.find(x=>x.id===id), e=this.shop; this.shopOpen=id; const items=Object.entries(this.catalog).filter(([,v])=>v.shop===id);
+    e.innerHTML='<button class="x">✕</button><h3>'+s.name+'</h3><div style="opacity:.75;font-size:.75rem;margin-bottom:.3rem">'+s.ml+' · Wallet '+inr(this.cash)+'</div>';
+    for(const [k,v] of items){ const own=this.owned.includes(k), row=document.createElement('div'); row.className='it'; const sw=document.createElement('i'); sw.className='sw'; sw.style.background=v.color||(v.look&&v.look.shirt)||'#888'; row.appendChild(sw);
+      const t=document.createElement('span'); t.textContent=v.name+' — '+inr(v.price); row.appendChild(t); const b=document.createElement('button');
+      if(own){ b.className='g'; b.textContent=v.kind==='vehicle'?'Ride':'Wear'; b.onclick=()=>{ if(v.kind==='vehicle') this.spawn(k); else this.send({k:'wear',item:k}); }; } else { b.textContent='Buy'; b.onclick=()=>this.send({k:'buy',item:k}); }
+      row.appendChild(b); e.appendChild(row); }
+    e.querySelector('.x').onclick=()=>this.closeShop(); e.style.display='block'; },
+  closeShop(){ this.shop.style.display='none'; this.shopOpen=null; },
+  spawn(item){ this.send({k:'spawn',item,h:Player.h}); this.closeShop(); },
+  openWallet(withTx){ const e=this.shop; this.shopOpen=null; const veh=this.owned.filter(i=>(this.catalog[i]||{}).kind==='vehicle');
+    e.innerHTML='<button class="x">✕</button><h3>Wallet</h3><div style="font:800 1.3rem var(--display)">'+inr(this.cash)+'</div><div style="opacity:.8;font-size:.78rem">Level '+this.level+' · '+this.xp+' XP · '+this.jobs+' jobs done</div><h3 style="margin-top:.7rem">My vehicles</h3>';
+    if(!veh.length) e.insertAdjacentHTML('beforeend','<div style="opacity:.7;font-size:.8rem">None yet — first scooter costs '+inr(6000)+' at Calicut Two Wheelers.</div>');
+    for(const k of veh){ const row=document.createElement('div'); row.className='it'; row.innerHTML='<span>'+this.catalog[k].name+'</span>'; const b=document.createElement('button'); b.textContent='Ride here'; b.onclick=()=>this.spawn(k); row.appendChild(b); e.appendChild(row); }
+    const tb=document.createElement('button'); tb.className='g'; tb.style.marginTop='.6rem'; tb.textContent='Recent transactions'; tb.onclick=()=>this.send({k:'txs'}); e.appendChild(tb);
+    if(withTx&&this.txs) e.insertAdjacentHTML('beforeend','<div style="font-size:.76rem;margin-top:.4rem">'+this.txs.map(t=>'<div class="it"><span>'+t.type.replace('_',' ').toLowerCase()+' · '+t.source+'</span><b style="color:'+(t.amount>0?'#7CFC9A':'#ff8a80')+'">'+(t.amount>0?'+':'−')+inr(Math.abs(t.amount))+'</b></div>').join('')+'</div>');
+    e.querySelector('.x').onclick=()=>this.closeShop(); e.style.display='block'; },
+  /* ---- per frame: target marker, GPS route, objective panel ---- */
+  update(dt){ if(!this.ready) return; const m=this.mission; this.routeT-=dt; this.t=(this.t||0)+dt;
+    for(const s of this.spots) if(s.mark) s.mark.children[0].position.y=2.9+Math.sin(this.t*2+s.x)*0.12;
+    if(this.shopOpen){ const s=this.spots.find(x=>x.id===this.shopOpen); if(s&&Math.hypot(s.x-Player.x,s.z-Player.z)>14) this.closeShop(); }
+    if(!m){ this.target.visible=false; return; }
+    this.target.visible=true; this.target.position.set(m.target.x,groundY(m.target.x,m.target.z,3),m.target.z); this.target.children[0].position.y=3.2+Math.sin(this.t*3)*0.2;
+    if(this.routeT<=0){ this.routeT=1.5; const a=Buses.nearestNode(Player.x,Player.z), b=Buses.nearestNode(m.target.x,m.target.z), seq=a&&b&&a!==b?Buses.path(String(a),String(b)):null;
+      if(seq){ const pts=[[Player.x,Player.z]]; let len=0; for(const {u,e} of seq){ let ps=e.pts.map(q=>[q.x,q.z]); if(String(e.a)!==String(u)) ps.reverse(); for(const q of ps) pts.push(q); } pts.push([m.target.x,m.target.z]); for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); this.route={pts,len}; }
+      else this.route={pts:[[Player.x,Player.z],[m.target.x,m.target.z]],len:Math.hypot(m.target.x-Player.x,m.target.z-Player.z)}; }
+    this.mt=(this.mt||0)-dt; if(this.mt<=0){ this.mt=0.5; this.renderMission(); } },
+  drawMap(g,sc,px,pz,R_){ if(!this.ready) return; if(this.route&&this.mission){ g.strokeStyle='#b388ff'; g.lineWidth=4; g.beginPath(); this.route.pts.forEach((q,i)=>{ if(i) g.lineTo(q[0]*sc,q[1]*sc); else g.moveTo(q[0]*sc,q[1]*sc); }); g.stroke(); }
+    const icon=(kind,x,z,r)=>{ const cx=clamp(x,px-R_*0.95,px+R_*0.95)*sc, cz=clamp(z,pz-R_*0.95,pz+R_*0.95)*sc; g.fillStyle={food:'#e65100',dealer:'#1565c0',cloth:'#6a1b9a',dest:'#2e7d32'}[kind]; g.beginPath(); g.arc(cx,cz,r,0,TAU); g.fill(); g.strokeStyle='#fff'; g.lineWidth=1.5; g.stroke(); this.glyph(g,kind,cx,cz,r/30); };
+    for(const s of this.spots) if(Math.abs(s.x-px)<R_*1.6&&Math.abs(s.z-pz)<R_*1.6) icon(s.kind,s.x,s.z,7);
+    if(this.mission) icon('dest',this.mission.target.x,this.mission.target.z,8); },
+};
+Eco.init();
 const VNAME={hatch:'car',sedan:'car',suv:'SUV',auto:'auto-rickshaw',goods:'goods auto',bus:'KSRTC bus',scooter:'scooter',bike:'motorcycle',ambulance:'ambulance',van:'van',truck:'lorry'};
 
 /* =====================================================================
@@ -3245,7 +3348,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     const P=Player, cam=this.camera;
     if(this.playing){
       const K=Input.k;
-      if(Input.once('KeyT')||Input.once('Tab')) UI.travel();
+      if(Input.once('KeyT')||Input.once('Tab')){ if(Eco.mission) UI.toast('Finish or cancel your job first — fast travel cancels it'); else UI.travel(); }
       for(let i=1;i<=5;i++) if(Input.once('Digit'+i)){ const key=Object.keys(WEATHER)[i-1]; Env.set(key); UI.toast(WEATHER[key].name); }
       if(Input.once('KeyG')) this.quality(); if(Input.once('KeyF')) document.getElementById('fps').hidden=!document.getElementById('fps').hidden; if(Input.once('KeyM')){ UI.mapOn=!UI.mapOn; UI.map.style.visibility=UI.mapOn?'visible':'hidden'; }
       if(Input.once('KeyC')){ const k=document.getElementById('keys'); k.classList.toggle('gone'); } if(Input.once('KeyR')) this.teleport(P.x,P.z,P.h); if(Input.once('KeyH')) Audio_.beep(410,520,0.35,0.07,0);
@@ -3256,11 +3359,12 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
         if(this.exiting){ inp={thr:0,steer:0,hb:true}; if(v.speed<1.3){ v.vx=v.vz=0; P.exit(this.scene); this.exiting=false; UI.fade(); } }
         else inp={thr:(K.KeyW?1:0)-(K.KeyS?1:0),steer:(K.KeyA?1:0)-(K.KeyD?1:0),hb:!!K.Space};
         if(P.veh){ v.update(dt,P.seat>0?null:inp); if(v.impact>2.5){ Cam.shake=Math.min(0.5,v.impact*0.035); Audio_.thud(v.impact*0.06); } v.impact=0; } }
+      else if(eKey&&Eco.interact()){ }
       else if(P.bus){ if(eKey){ if(P.bus.b.dwell){ Buses.alight(); UI.fade(); } else { P.bus.b.reqStop=true; UI.toast('Stopping the bus…'); } } }
       else if(eKey&&Buses.nearestStop(P.x,P.z)){ Buses.board(Buses.nearestStop(P.x,P.z)); UI.fade(); }
       else if(eKey){ const nv=P.nearestVehicle(); if(nv){ P.enter(nv,this.scene); UI.fade(); Cam.last=-10; } }
       for(const v of PVEH){ if(v!==P.veh) v.update(dt,null); v.g.visible=v===P.veh||Math.abs(v.x-P.x)+Math.abs(v.z-P.z)<420; }
-      Buses.obs.length=0; Buses.update(dt,P.x,P.z,Buses.obs);
+      Buses.obs.length=0; Buses.update(dt,P.x,P.z,Buses.obs); Eco.update(dt);
       P.update(dt,{fwd:(K.KeyW?1:0)-(K.KeyS?1:0),right:(K.KeyD?1:0)-(K.KeyA?1:0),run:!!(K.ShiftLeft||K.ShiftRight),jump:Input.once('Space')},Cam.yaw);
       if(P.edge>0){ P.edge-=dt; if(!this.edgeShown){ this.edgeShown=true; UI.toast('That is the edge of miniature Kozhikode'); setTimeout(()=>this.edgeShown=false,4000); } }
       this.focus.x=P.x; this.focus.y=P.y; this.focus.z=P.z; Cam.update(dt,cam,P);
@@ -3269,7 +3373,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     Input.end();
     const f=this.focus, ob=this.obst; ob.length=0; if(this.playing){ if(P.veh){ const v=P.veh, fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else ob.push({x:P.x,z:P.z,y:P.y,r:0.4}); }
     Peds.obstacles(ob,f.x,f.z); for(const o of Buses.obs) ob.push(o);
-    if(Net.on) for(const r of Net.remote.values()){ if(Math.abs(r.x-f.x)>160||Math.abs(r.z-f.z)>160||r.bus) continue; const v=r.vi>=0?PVEH[r.vi]:null; if(v&&r.sn===0){ const fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else if(!v) ob.push({x:r.x,z:r.z,y:r.y,r:0.4}); } // NPC traffic yields to other players too
+    if(Net.on) for(const r of Net.remote.values()){ if(Math.abs(r.x-f.x)>160||Math.abs(r.z-f.z)>160||r.bus) continue; const v=r.vi>=0?vehById(r.vi):null; if(v&&r.sn===0){ const fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else if(!v) ob.push({x:r.x,z:r.z,y:r.y,r:0.4}); } // NPC traffic yields to other players too
     Traffic.update(dt,f.x,f.z,cam,ob); Train.update(dt); Peds.update(dt,f.x,f.z,this.playing?P.veh:null,cam); Net.update(dt);
     Env.update(dt,cam,f.x,f.y,f.z); if(this.frame%4===0) updateLOD(cam);
     if(this.playing){ UI.update(dt,P); if(this.frame%6===0) Audio_.update(dt*6,P,Traffic.count(),zoneAt(P.x,P.z)); }

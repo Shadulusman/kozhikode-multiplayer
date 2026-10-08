@@ -43,8 +43,14 @@ const { createStore } = require('./phone-store');
 const { createPhone } = require('./phone-server');
 const phoneStore = createStore();
 let phone = null;               // set once the store is ready; until then phone messages are ignored
-phoneStore.init().then(() => {
+const { createEcoStore } = require('./economy-store');
+const { createEconomy } = require('./economy');
+let eco = null;                  // wallet/jobs/shops; keyed by the phone account, so it needs the phone store
+phoneStore.init().then(async () => {
   phone = createPhone({ store: phoneStore, send: (ws, o) => send(ws, o) });
+  const ecoStore = createEcoStore(phoneStore); await ecoStore.init();
+  eco = createEconomy({ store: ecoStore, send: (ws, o) => send(ws, o), broadcast: (o) => { if (o.t === 'pv') vehicles.delete(o.vid); broadcast(o); } });   // a respawned/removed bought vehicle starts with a clean pose/occupancy
+  console.log('Economy ready (' + ecoStore.kind + ' store)');
   console.log('Phone system ready (' + phoneStore.kind + ' store)' + (phoneStore.kind === 'memory' ? ' — numbers are NOT permanent, set DATABASE_URL' : ''));
 }).catch((e) => console.error('Phone system disabled:', e && e.message));
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -89,23 +95,26 @@ wss.on('connection', (ws) => {
         t: 'w', id, now: Date.now(), total: players.size, ice: ICE,
         players: [...players.values()].filter(q => q !== p).map(q => [q.id, q.name, q.look]),
         vehicles: [...vehicles.entries()].map(([vi, v]) => [vi, v.x, v.y, v.z, v.h, v.occ]),
+        pvs: eco ? eco.pvList() : [],
       });
       broadcast({ t: 'j', id, name: p.name, look: p.look, total: players.size }, p);
-      if (phone) phone.attach(p, typeof m.tok === 'string' ? m.tok.slice(0, 128) : null);
+      if (phone) Promise.resolve(phone.attach(p, typeof m.tok === 'string' ? m.tok.slice(0, 128) : null)).then(() => { if (eco && p.ph && p.ph.user && !p.closed) eco.attach(p, p.ph.user.id); });
       return;
     }
     if (!p) return;
 
     if (m.t === 'ph') { if (phone) phone.handle(p, m); return; }
+    if (m.t === 'eco') { if (eco && typeof m.k === 'string') eco.handle(p, m); return; }
 
     if (m.t === 's') {
       const x = num(m.x), y = num(m.y, 1e4), z = num(m.z), h = num(m.h, 100), sp = num(m.sp, 200), vf = num(m.vf, 200), st = num(m.st, 10);
       if (x === null || y === null || z === null || h === null) return;
       p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0; p.rb = Number.isInteger(m.rb) && m.rb >= -1 && m.rb < 100000 ? m.rb : -1;
-      const vi = Number.isInteger(m.vi) && m.vi >= 0 && m.vi < 500 ? m.vi : -1;
+      let vi = Number.isInteger(m.vi) && ((m.vi >= 0 && m.vi < 500) || (m.vi >= 1000 && m.vi < 1100)) ? m.vi : -1;   // 1000+: bought vehicles
       const sn = Number.isInteger(m.sn) && m.sn >= 0 && m.sn < 8 ? m.sn : 0;
       if (vi !== p.vi || (vi >= 0 && sn !== p.sn)) {
         releaseVehicle(p);
+        if (vi >= 1000 && (!eco || !eco.pvOwner(vi) || (sn === 0 && eco.pvOwner(vi) !== p))) { send(ws, { t: 'deny', vi, sn }); vi = -1; }   // only the owner drives their vehicle
         if (vi >= 0) {
           const v = vehicles.get(vi) || { x, y, z, h, occ: [] };
           if (v.occ[sn] && v.occ[sn] !== p.id) { send(ws, { t: 'deny', vi, sn }); }
@@ -113,6 +122,7 @@ wss.on('connection', (ws) => {
         }
       }
       if (p.vi >= 0 && p.sn === 0) { const v = vehicles.get(p.vi); v.x = x; v.y = y; v.z = z; v.h = h; }
+      p.onBus = p.rb >= 0; if (eco) eco.onMove(p);
       return;
     }
 
@@ -147,6 +157,7 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (!p) return;
     if (phone) phone.detach(p);
+    if (eco) eco.detach(p);
     releaseVehicle(p); players.delete(p.id); recentChat.delete(p.id);
     broadcast({ t: 'l', id: p.id, total: players.size });
   });

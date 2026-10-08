@@ -57,6 +57,14 @@
 ## Voice / TURN
 - `ICE` in server.js = STUN + optional TURN from `TURN_URL` (comma list) / `TURN_USER` / `TURN_PASS` (WEBRTC_* aliases); sent in the welcome message, used by proximity voice (`Net.makePeer`) and the phone. Setup steps in README (*Voice on strict networks*). `node test/turn-config.js` checks a running server hands TURN to clients.
 
+## Economy (vertical slice) — server-authoritative
+- `economy.js` (missions, shops, personal vehicles, validation) + `economy-store.js` (Postgres via the phone pool, or memory). Profile keyed by the phone account id (device token), so it survives refresh/relogin. Tables: `eco_profiles`, `eco_owned`, `eco_tx` (transaction log). Purchases are one SQL transaction (balance check + deduct + ownership row).
+- Client (`Eco` in index.html) only sends intents `{t:'eco',k:'accept'|'abandon'|'buy'|'wear'|'spawn'|'txs'}`; server replies `me|mission|done|fail|bought|err|txs`, plus `pv` (bought vehicle spawned/removed, vid 1000+) and `lk` (outfit change broadcast).
+- Missions progress from server-known positions (`onMove` on each state update): pickup within 9 m, drop within 10 m, minimum time (distance / 45 m/s), position jumps >80 m cancel the job (client blocks T travel during a job). First two jobs are fixed (Nazeer: Mananchira ₹500, Beach ₹700), then generated (₹ ≈ 180 + 0.22/m, 20% fast bonus).
+- Spots (job givers, dealer, clothing) and catalog live in economy.js (`SPOTS`, `CATALOG`); new players start with ₹1,500 at Nazeer's Kitchen (Mavoor Road). First scooter ₹6,000 ≈ 10 deliveries.
+- Bought vehicles: `PVX` map + `vehById(vi)`; every PVehicle has `vid` (shared = index, bought = 1000+); only the owner may take seat 0 (server denies others).
+- Tests: `npm test` (store, incl. pg-mem Postgres), `node test/economy-e2e.js` against a running server (full loop + exploits).
+
 ## Moderation
 - Client: People panel (button or K) lists players within 60 m with Mute / Report. Mute is by name, stored in localStorage `kzk_muted`; hides their chat and sets their voice gain to 0.
 - Server: chat profanity masked (`BAD` list, English + common Malayalam slurs), rate limit 600 ms gap and max 5 messages / 10 s (`warn` message), reports `{t:'rep',id,reason}` limited to 1 / 30 s, logged to stdout (`REPORT {...}`, visible in Render logs) and `reports.log` (gitignored, lost on Render redeploy) with reporter, target and both players' last 8 chat lines.
