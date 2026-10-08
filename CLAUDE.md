@@ -42,6 +42,9 @@
 - Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).
 - Board with E at a stopped bus (`Buses.board`), get off with E at a stop (`alight`). Riding players send `rb` = busId*100+seat; the server relays it in snapshots (index 11) and others see them seated.
 
+## Saved state (per device, localStorage)
+- `kzk_name`, `kzk_look` (Net/MYLOOK), `kzk_pos` {x,z,h} saved every 5 s and on pagehide/hidden (`Game.savePos`), restored at start by `Game.loadPos` (validated inside the world and out of buildings). `?fresh` ignores it. Also `kzk_q` (graphics), `kzk_muted`.
+
 ## Voice / TURN
 - `ICE` in server.js = STUN + optional TURN from `TURN_URL` (comma list) / `TURN_USER` / `TURN_PASS` (WEBRTC_* aliases); sent in the welcome message, used by proximity voice (`Net.makePeer`) and the phone. Setup steps in README (*Voice on strict networks*). `node test/turn-config.js` checks a running server hands TURN to clients.
 
@@ -71,4 +74,4 @@
 - Headless checks used so far: Playwright + Chromium with `--use-gl=swiftshader` (slow: ~1 min per page load, run pages in the background); fake mic flags `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`.
 
 ## Ideas not done yet
-remote-player vehicle collisions, saving last position.
+remote-player vehicle collisions, 
