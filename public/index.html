@@ -237,6 +237,18 @@ const nextFrame = ()=>new Promise(r=>setTimeout(r,0));
    Procedural textures (canvas). No external image assets are required.
    ===================================================================== */
 const TEX = {}, MAT = {};
+/** subtle Kerala monsoon weathering on walls: damp/algae band at the foot, vertical rain streaks, faded patches (world-space, no extra textures) */
+function weathered(m,key){ m.onBeforeCompile=sh=>{
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWW;').replace('#include <begin_vertex>','#include <begin_vertex>\nvWW=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+varying vec3 vWW; float wH(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float wN(vec2 p){ vec2 i=floor(p),f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(wH(i),wH(i+vec2(1,0)),f.x),mix(wH(i+vec2(0,1)),wH(i+vec2(1,1)),f.x),f.y); }`)
+    .replace('#include <map_fragment>',`#include <map_fragment>
+{ float h=vWW.x+vWW.z; float y=vWW.y; float damp=(1.0-smoothstep(0.0,1.4+wN(vec2(h*0.4,1.0))*0.8,y)); /* rising damp + algae at the foot */
+  float streak=smoothstep(0.55,0.95,wN(vec2(h*1.7,y*0.07)))*smoothstep(0.25,0.75,wN(vec2(h*0.21,3.0))); /* rain streaks running down */
+  float fade=wN(vec2(h*0.09,y*0.09));
+  diffuseColor.rgb*=mix(1.0,0.78,streak*0.55)*mix(0.92,1.04,fade); diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(0.62,0.66,0.55),damp*0.55); }`); };
+  m.onBeforeCompile.toString=()=>'weathered_'+key; return m; }
 /** coastal wind: sways vertices above height h0 by distance from the trunk axis, phase-shifted per instance so trees don't move in sync */
 const WIND = {uTime:{value:0}};
 function windSway(m,amp,h0,key){ m.onBeforeCompile=sh=>{ sh.uniforms.uTime=WIND.uTime;
@@ -641,7 +653,7 @@ function buildTextures(){
   const L=o=>new THREE.MeshLambertMaterial(o);
   MAT.plain=L({vertexColors:true});
   MAT.plainDS=L({vertexColors:true,side:THREE.DoubleSide});
-  MAT.fac=TEX.fac.map(t=>L({map:t,vertexColors:true}));
+  MAT.fac=TEX.fac.map(t=>weathered(L({map:t,vertexColors:true}),'fac'));
   MAT.glass=new THREE.MeshStandardMaterial({map:TEX.fac[2],vertexColors:true,roughness:0.18,metalness:0.55,envMapIntensity:1.3});
   MAT.shop=L({map:TEX.shop}); MAT.sign=L({map:TEX.sign}); MAT.ad=L({map:texBusAd(),polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   MAT.tile=L({map:TEX.tile,vertexColors:true,side:THREE.DoubleSide});
@@ -886,7 +898,17 @@ function pointBlocked(x,y,z){
 }
 
 /* ---------- sector batches (streaming / LOD units) ---------- */
-const BATCHES = [], CHUNKS = new Map();
+const BATCHES = [], CHUNKS = new Map(), POLES = [];
+/** overhead lines: each KSEB pole is wired to its nearest aligned neighbour (3 sagging conductors between matching insulators). One LineSegments draw call. */
+function buildCables(scene){ const pos=[], g=new Map(), key=(x,z)=>Math.floor(x/50)+','+Math.floor(z/50);
+  for(const p of POLES){ const k=key(p.x,p.z); (g.get(k)||g.set(k,[]).get(k)).push(p); }
+  for(const a of POLES){ const ax=Math.sin(a.r), az=Math.cos(a.r); let best=null, bd=46;
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const b of g.get((Math.floor(a.x/50)+i)+','+(Math.floor(a.z/50)+j))||[]){ if(b===a) continue; const dx=b.x-a.x, dz=b.z-a.z, d=Math.hypot(dx,dz); if(d<12||d>=bd) continue; const al=(dx*ax+dz*az)/d; if(al>0.9){ bd=d; best=b; } }
+    if(!best) continue; const b=best, ca=[Math.cos(a.r),-Math.sin(a.r)], cb=[Math.cos(b.r),-Math.sin(b.r)], flip=ca[0]*cb[0]+ca[1]*cb[1]<0?-1:1, sag=0.35+bd*0.012;
+    for(const o of[-0.85,0,0.85]){ const p0=[a.x+ca[0]*o,a.y+7.86,a.z+ca[1]*o], p1=[b.x+cb[0]*o*flip,b.y+7.86,b.z+cb[1]*o*flip]; let prev=null;
+      for(let t=0;t<=8;t++){ const u=t/8, q=[lerp(p0[0],p1[0],u),lerp(p0[1],p1[1],u)-sag*4*u*(1-u),lerp(p0[2],p1[2],u)]; if(prev) pos.push(...prev,...q); prev=q; } } }
+  if(!pos.length) return; const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const m=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x1b1b1a,transparent:true,opacity:0.85})); m.frustumCulled=false; m.matrixAutoUpdate=false; scene.add(m); return pos.length/6; }
 const MATKEYS = { // key -> [material getter, lod, castShadow]
   plain:[()=>MAT.plain,'far',true], plainDS:[()=>MAT.plainDS,'far',true], glass:[()=>MAT.glass,'far',true], tile:[()=>MAT.tile,'far',true], tin:[()=>MAT.tin,'far',true],
   laterite:[()=>MAT.laterite,'far',true], concrete:[()=>MAT.concrete,'far',true], shop:[()=>MAT.shop,'near',false], sign:[()=>MAT.sign,'mid',false], ad:[()=>MAT.ad,'mid',false],
@@ -909,7 +931,7 @@ class Batch {
       this.add1(type==='palm'?['palmA','palmB','palmC'][Math.floor(hsh*3)]:type==='tree'?'treeHi':'shrubHi',lx,y,lz,ry,sx,sy,sz,tint); } // near: detailed variant; the original stays as the distance LOD
     else if(type==='palm'||type==='tree'||type==='shrub') type+='M'; // big/far batches: keep the simple model at every distance
     this.add1(type,lx,y,lz,ry,sx,sy,sz,tint); }
-  add1(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
+  add1(type,lx,y,lz,ry=0,sx=1,sy,sz,tint){ const f=this.fr; if(type==='pole'){ const [wx,wz]=this.W(lx,lz); POLES.push({x:wx,z:wz,y:y+(f?f.y:0),r:ry+(f?f.rot:0)}); } let x=lx,z=lz; if(f){ x=f.x+lx*f.c+lz*f.s; z=f.z-lx*f.s+lz*f.c; ry+=f.rot; y+=f.y; }
     (this.inst[type]||(this.inst[type]=[])).push(x,y,z,ry,sx,sy===undefined?sx:sy,sz===undefined?sx:sz, tint?tint[0]:1,tint?tint[1]:1,tint?tint[2]:1); }
   /** collider in local coords */
   col(lx,lz,sx,sz,rot=0,h=30,y0=0){ const [x,z]=this.W(lx,lz); return addCol(x,z,sx,sz,rot+(this.fr?this.fr.rot:0),h+(this.fr?this.fr.y:0),y0+(this.fr?this.fr.y:0)); }
@@ -1008,6 +1030,9 @@ function buildRoads(){
     else if(e.type==='art'){ for(const sg of[-1,1]){ eDashes(G.mark,e,sg*3.95,0.14,s0,s1,3,4.5,0.04,Wc); eStrip(G.mark,e,sg*7.5-0.07,sg*7.5+0.07,s0,s1,0.04,Wc);} }
     else if(e.type==='main'){ eDashes(G.mark,e,0,0.14,s0,s1,3,4.5,0.04,Wc); for(const sg of[-1,1]) eStrip(G.mark,e,sg*4.55-0.06,sg*4.55+0.06,s0,s1,0.04,Wc); }
     else if(e.type==='svc'){ for(const sg of[-1,1]){ eStrip(G.mark,e,sg*9.1-0.07,sg*9.1+0.07,s0,s1,0.04,Wc); eStrip(G.mark,e,sg*15.0-0.07,sg*15.0+0.07,s0,s1,0.04,Wc);} }
+    // KSEB pole line on one side of every town street (the overhead cables are strung between them in buildCables)
+    if(e.type==='art'||e.type==='main'){ const off=hw+(T_.side>0?T_.side+0.15:0.9), sd=(String(e.a).length+String(e.b).length)%2?1:-1;
+      for(let s=e.ta+9;s<len-e.tb-9;s+=34){ const f=eFrame(e,s), x=f.x+f.nx*off*sd, z=f.z+f.nz*off*sd; chunkAt(x,z).add('pole',x,0,z,Math.atan2(f.dx,f.dz)); addCol(x,z,0.3,0.3,0,8); } }
     // manholes in the lanes and drain gratings at the kerb
     if(e.type==='art'||e.type==='main'){ const iron=C('#3b3936'), rim=C('#5d5a55'), grate=C('#262523');
       for(let s=s0+11;s<s1-4;s+=R(55,90)){ const f=eFrame(e,s), lo=(R(1)<0.5?-1:1)*hw*R(0.3,0.6), cx=f.x+f.nx*lo, cz=f.z+f.nz*lo, K=14;
@@ -1341,6 +1366,12 @@ function mkBuilding(ch,x,z,rot,w,d,o){
   if(kind==='old'&&floors>=2&&chance(0.45)){ const wd=C('#5a3d28'); P.box(0,g0-0.12,hd+0.75,w,0.14,1.5,wd); D.box(0,g0+0.02,hd+1.46,w,0.85,0.06,sh(wd,0.8));
     for(let px=-hw+0.15;px<=hw;px+=Math.max(2.4,w/Math.round(w/2.8))) D.cyl(px,g0,hd+1.42,0.07,0.07,fh-0.5,wd,5);
     ch.gb('tile').quad([-hw-0.2,g0+fh-0.3,hd],[hw+0.2,g0+fh-0.3,hd],[hw+0.2,g0+fh-0.95,hd+1.9],[-hw-0.2,g0+fh-0.95,hd+1.9],[0.9,0.9,0.9],[0,0,w/1.1,1.8]); }
+  // ----- facade depth: concrete sunshades (chajjas) over windows, sills, AC units, drain pipes -----
+  if(style===0||style===5||style===3){ const r0=shops?1:0, tw=w/nb, rh=fh, top=style===5?0.69:0.74, sw2=style===5?0.86:style===3?0.62:0.74, sx=style===3?-0.18:0, ccol=sh(wc,0.9), sill=sh(wc,1.08);
+    for(let r=r0;r<floors;r++){ const yb=shops?g0+(r-1)*rh:r*rh; for(let b=0;b<nb;b++){ const xc=-hw+(b+0.5+sx)*tw;
+      D.box(xc,yb+top*rh,hd+0.3,tw*sw2,0.13,0.6,ccol); D.box(xc,yb+top*rh-0.05,hd+0.58,tw*sw2,0.05,0.04,sh(ccol,0.7)); /* slab + drip edge shadow line */ if(style!==3) D.box(xc,yb+0.27*rh,hd+0.05,tw*sw2*0.92,0.06,0.12,sill);
+      if((kind==='com'||kind==='apt')&&chance(0.07)){ const ax=xc+tw*0.28; D.box(ax,yb+0.12*rh,hd+0.18,0.78,0.52,0.32,C('#d9d9d4')); D.box(ax+0.12,yb+0.12*rh+0.08,hd+0.345,0.4,0.36,0.01,C('#55585c')); } } } }
+  if((kind==='com'||kind==='old'||kind==='apt')&&floors>1&&chance(0.7)){ const px=chance(0.5)?hw-0.18:-hw+0.18; D.cyl(px,0,hd+0.09,0.045,0.045,H,C('#6b6e70'),5); }
   // ----- roof -----
   const tiled = kind==='old' ? chance(0.62) : false;
   P.quad([-hw,H,hd],[hw,H,hd],[hw,H,-hd],[-hw,H,-hd],C(pick(ROOFC)));
@@ -1368,6 +1399,7 @@ function mkHouse(ch,x,z,rot,w,d,o){
   if(flat){ const pc=sh(wc,0.92); P.box(0,H,hd-0.1,w,0.7,0.2,pc); P.box(0,H,-hd+0.1,w,0.7,0.2,pc); P.box(hw-0.1,H,0,0.2,0.7,d-0.4,pc); P.box(-hw+0.1,H,0,0.2,0.7,d-0.4,pc); D.cyl(R(-hw+1,hw-1),H+0.1,-hd+1.3,0.55,0.6,1.1,C('#151515'),9);
     ch.gb('tile').quad([-hw-0.3,H+0.1,hd-0.2],[hw+0.3,H+0.1,hd-0.2],[hw+0.3,H-0.5,hd+1.1],[-hw-0.3,H-0.5,hd+1.1],rt,[0,0,w/1.1,1.2]); }
   else tileRoof(ch.gb('tile'),0,H,0,w,d,Math.min(w,d)*0.34,rt,0.75,chance(0.25));
+  { const tw=w/nb, ccol=sh(wc,0.88); for(let r=0;r<floors;r++) for(let b=0;b<nb;b++) D.box(-hw+(b+0.5)*tw,r*fh+0.72*fh,hd+0.26,tw*0.46,0.12,0.52,ccol); } // window sunshades
   // sit-out porch
   const pw=w*R(0.4,0.6), px=R(-hw+pw/2,hw-pw/2); P.box(px,0,hd+1.2,pw,0.3,2.4,C('#b8a898')); P.box(px,2.7,hd+1.25,pw+0.3,0.16,2.7,trim);
   for(const sx of[-1,1]) D.cyl(px+sx*(pw/2-0.2),0.3,hd+2.2,0.11,0.11,2.4,C('#ece6da'),8);
@@ -3010,7 +3042,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     await step(0.48,'Opening the shops on S.M. Street…'); const order={ped:0,art:1,svc:2,main:3,hw:4,st:5}; for(const e of EDGES.slice().sort((a,b)=>order[a.type]-order[b.type])) fillEdge(e);
     await step(0.62,'Filling in the neighbourhoods…'); fillBack();
     await step(0.72,'Planting coconut palms…'); fillVegetation(); fillStreetProps();
-    await step(0.82,'Pouring the Arabian Sea…'); buildGround(scene); finalizeDecals(scene); this.stats=finalizeBatches(scene); Env.init(scene,renderer,camera);
+    await step(0.82,'Pouring the Arabian Sea…'); buildGround(scene); finalizeDecals(scene); this.cables=buildCables(scene); this.stats=finalizeBatches(scene); Env.init(scene,renderer,camera);
     await step(0.92,'Starting the buses…'); spawnPlayerVehicles(scene); await loadChars(); Player.init(scene); Traffic.init(scene,84); Train.init(scene); Peds.init(scene); Input.init(canvas);
     this.focus={x:-525,y:0,z:0}; Traffic.refreshCands(this.focus.x,this.focus.z); Traffic.want=Traffic.target; for(let i=0;i<500&&Traffic.count()<Traffic.target;i++) Traffic.spawn(this.focus.x,this.focus.z,camera,true);
     this.setQuality(this.autoQuality(),true);
