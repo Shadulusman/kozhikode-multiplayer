@@ -14,7 +14,9 @@ const PUB = path.join(__dirname, 'public');
 // Voice chat is peer-to-peer (WebRTC); this server only relays the handshake.
 // Add a TURN server (TURN_URL / TURN_USER / TURN_PASS) if players on strict mobile networks can't hear each other.
 const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-if (process.env.TURN_URL) ICE.push({ urls: process.env.TURN_URL.split(','), username: process.env.TURN_USER, credential: process.env.TURN_PASS });
+const TURN_URL = process.env.TURN_URL || process.env.WEBRTC_TURN_URL;      // WEBRTC_* names are accepted as aliases
+if (process.env.WEBRTC_STUN_URL) ICE[0].urls = process.env.WEBRTC_STUN_URL.split(',');
+if (TURN_URL) ICE.push({ urls: TURN_URL.split(','), username: process.env.TURN_USER || process.env.WEBRTC_TURN_USERNAME, credential: process.env.TURN_PASS || process.env.WEBRTC_TURN_CREDENTIAL });
 
 const server = http.createServer((req, res) => {
   const url = (req.url || '/').split('?')[0];
@@ -24,7 +26,7 @@ const server = http.createServer((req, res) => {
   if (!file.startsWith(PUB)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
-    const TYPES = { '.html': 'text/html; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.glb': 'model/gltf-binary', '.ktx2': 'image/ktx2', '.md': 'text/plain; charset=utf-8' };
+    const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg', '.png': 'image/png', '.glb': 'model/gltf-binary', '.ktx2': 'image/ktx2', '.md': 'text/plain; charset=utf-8' };
     const ext = path.extname(file).toLowerCase();
     res.writeHead(200, { 'Content-Type': TYPES[ext] || 'application/octet-stream', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400' });
     res.end(data);
@@ -36,6 +38,15 @@ const players = new Map();      // id -> player
 const vehicles = new Map();     // vehicle index -> {x,y,z,h,occ:[playerId|null per seat]}; seat 0 = driver (owns the pose)
 let nextId = 1;
 
+// In-game phone (numbers, calls, WebRTC signalling). Needs DATABASE_URL for permanent numbers; falls back to memory (dev only).
+const { createStore } = require('./phone-store');
+const { createPhone } = require('./phone-server');
+const phoneStore = createStore();
+let phone = null;               // set once the store is ready; until then phone messages are ignored
+phoneStore.init().then(() => {
+  phone = createPhone({ store: phoneStore, send: (ws, o) => send(ws, o) });
+  console.log('Phone system ready (' + phoneStore.kind + ' store)' + (phoneStore.kind === 'memory' ? ' — numbers are NOT permanent, set DATABASE_URL' : ''));
+}).catch((e) => console.error('Phone system disabled:', e && e.message));
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const num = (v, lim = 1e5) => (typeof v === 'number' && isFinite(v) && Math.abs(v) < lim) ? v : null;
 const send = (ws, o) => { if (ws.readyState === 1) ws.send(JSON.stringify(o)); };
@@ -56,7 +67,9 @@ wss.on('connection', (ws) => {
 
   ws.on('message', (raw) => {
     const now = Date.now(); tokens = Math.min(40, tokens + (now - lastRefill) / 1000 * 30); lastRefill = now;
-    if (--tokens < 0) return;                                   // flood protection
+    const isPh = raw.length > 10 && raw.toString('utf8', 0, 10) === '{"t":"ph",';   // phone signalling has its own limiter (ICE comes in bursts)
+    tokens -= isPh ? 0.25 : 1;
+    if (tokens < 0) return;                                     // flood protection
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (!m || typeof m.t !== 'string') return;
 
@@ -72,9 +85,12 @@ wss.on('connection', (ws) => {
         vehicles: [...vehicles.entries()].map(([vi, v]) => [vi, v.x, v.y, v.z, v.h, v.occ]),
       });
       broadcast({ t: 'j', id, name: p.name, look: p.look, total: players.size }, p);
+      if (phone) phone.attach(p, typeof m.tok === 'string' ? m.tok.slice(0, 128) : null);
       return;
     }
     if (!p) return;
+
+    if (m.t === 'ph') { if (phone) phone.handle(p, m); return; }
 
     if (m.t === 's') {
       const x = num(m.x), y = num(m.y, 1e4), z = num(m.z), h = num(m.h, 100), sp = num(m.sp, 200), vf = num(m.vf, 200), st = num(m.st, 10);
@@ -113,6 +129,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (!p) return;
+    if (phone) phone.detach(p);
     releaseVehicle(p); players.delete(p.id);
     broadcast({ t: 'l', id: p.id, total: players.size });
   });
@@ -135,5 +152,8 @@ setInterval(() => {
 
 // drop dead connections
 setInterval(() => { for (const ws of wss.clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; ws.ping(); } }, 20000);
+
+// Render stops the service with SIGTERM: end live calls cleanly so history rows are not left "ringing"
+process.on('SIGTERM', () => { try { if (phone) phone.shutdown(); } catch (e) {} setTimeout(() => process.exit(0), 300); });
 
 server.listen(PORT, () => console.log('Kozhikode multiplayer listening on :' + PORT));

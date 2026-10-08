@@ -6,3 +6,14 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /healthz
+    envVars:
+      # Permanent in-game phone numbers + call history. Paste a Postgres connection string in the Render dashboard.
+      - key: DATABASE_URL
+        sync: false
+      # Optional TURN server for voice calls on strict networks.
+      - key: WEBRTC_TURN_URL
+        sync: false
+      - key: WEBRTC_TURN_USERNAME
+        sync: false
+      - key: WEBRTC_TURN_CREDENTIAL
+        sync: false
