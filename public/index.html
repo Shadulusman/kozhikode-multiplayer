@@ -3199,7 +3199,12 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     this.setQuality(this.autoQuality(),true);
     updateLOD(camera); UI.progress(1,''); UI.ready(); this.last=performance.now(); this.manual=location.search.indexOf('manual')>=0; window.__ready=true; if(this.manual) this.tick(0.03,true); else requestAnimationFrame(t=>this.loop(t));
   },
-  start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); this.teleport(START.x,START.z,START.h,true); UI.area=null; document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); const k=document.getElementById('keys'); k.classList.remove('min','gone'); setTimeout(()=>k.classList.add('gone'),8000); },
+  /** last position on this device (name + look are already kept in localStorage by Net / MYLOOK) */
+  savePos(){ if(!this.playing) return; const P=Player, v=P.veh, b=P.bus&&P.bus.b; const x=b?b.x:v?v.x:P.x, z=b?b.z:v?v.z:P.z, h=v?v.h:P.h; try{ localStorage.setItem('kzk_pos',JSON.stringify({x:Math.round(x*10)/10,z:Math.round(z*10)/10,h:Math.round(h*100)/100,t:Date.now()})); }catch(e){} },
+  loadPos(){ let o=null; try{ o=JSON.parse(localStorage.getItem('kzk_pos')||'null'); }catch(e){}
+    if(o&&isFinite(o.x)&&isFinite(o.z)&&o.x>WORLD.x0&&o.x<WORLD.x1&&o.z>WORLD.z0&&o.z<WORLD.z1&&o.x>SEA_X+2&&!/[?&]fresh/.test(location.search)){ _pc.x=o.x; _pc.z=o.z; resolveCircle(_pc,0.36,groundY(o.x,o.z,3),1.7); return {x:_pc.x,z:_pc.z,h:isFinite(o.h)?o.h:START.h,saved:true}; }
+    return {x:START.x,z:START.z,h:START.h}; },
+  start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); { const sp=this.loadPos(); this.teleport(sp.x,sp.z,sp.h,true); if(sp.saved) setTimeout(()=>UI.toast('Welcome back — you are where you left off',4),5200); } UI.area=null; this.posT=0; addEventListener('pagehide',()=>this.savePos()); document.addEventListener('visibilitychange',()=>{ if(document.hidden) this.savePos(); }); document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); const k=document.getElementById('keys'); k.classList.remove('min','gone'); setTimeout(()=>k.classList.add('gone'),8000); },
   /** carry: a driver travels in their vehicle (passengers go along); anyone else, or carry=false, gets out first */
   teleport(x,z,h,quiet,carry){ if(Player.bus){ Game.scene.add(Player.g); Player.bus=null; } const v=Player.veh;
     if(v&&carry&&Player.seat===0){ v.x=x; v.z=z; v.y=groundY(x,z,2); v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.sync(); Player.x=x; Player.z=z; Player.y=v.y; Player.h=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); return; }
@@ -3229,6 +3234,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
       if(Input.once('KeyG')) this.quality(); if(Input.once('KeyF')) document.getElementById('fps').hidden=!document.getElementById('fps').hidden; if(Input.once('KeyM')){ UI.mapOn=!UI.mapOn; UI.map.style.visibility=UI.mapOn?'visible':'hidden'; }
       if(Input.once('KeyC')){ const k=document.getElementById('keys'); k.classList.toggle('gone'); } if(Input.once('KeyR')) this.teleport(P.x,P.z,P.h); if(Input.once('KeyH')) Audio_.beep(410,520,0.35,0.07,0);
       if(K.ArrowLeft) Cam.look(-1.8*dt,0); if(K.ArrowRight) Cam.look(1.8*dt,0); if(K.ArrowUp) Cam.look(0,-1.1*dt); if(K.ArrowDown) Cam.look(0,1.1*dt);
+      this.posT=(this.posT||0)+dt; if(this.posT>5){ this.posT=0; this.savePos(); }
       const eKey=Input.once('KeyE');
       if(P.veh){ const v=P.veh; if(eKey) this.exiting=true; let inp;
         if(this.exiting){ inp={thr:0,steer:0,hb:true}; if(v.speed<1.3){ v.vx=v.vz=0; P.exit(this.scene); this.exiting=false; UI.fade(); } }
