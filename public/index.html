@@ -2436,6 +2436,7 @@ class PVehicle {
 }
 const _pc={x:0,z:0};
 function spawnPlayerVehicles(scene){ MAT.brakeOff=new THREE.MeshBasicMaterial({color:0x4a0808}); MAT.brakeOn=new THREE.MeshBasicMaterial({color:0xff2a1a}); MAT.revOff=new THREE.MeshBasicMaterial({color:0x6a6a66}); MAT.revOn=new THREE.MeshBasicMaterial({color:0xffffff}); MAT.headOff=new THREE.MeshStandardMaterial({color:0xdcdcd4,roughness:0.15,metalness:0.2}); MAT.headOn=new THREE.MeshBasicMaterial({color:0xfff6dc});
+  SPAWN_VEH.push(['auto',-778,214,PI/2,'#111111'],['auto',-778,218,PI/2,'#111111'],['auto',-778,222,PI/2,'#111111']); // pre-paid auto stand (job start); appended last so every client gets the same vids
   for(const s of SPAWN_VEH){ const v=new PVehicle(s[0],s[1],s[2],s[3],s[4]); scene.add(v.g); } }
 
 /* =====================================================================
@@ -2839,7 +2840,7 @@ const Net = {
   clearRemotes(){ for(const r of this.remote.values()) this.drop(r); this.remote.clear(); this.info={}; },
   sendState(){ const ws=this.ws; if(!ws||ws.readyState!==1) return; const P=Player, v=P.veh, q=n=>Math.round(n*100)/100;
     const o=v?{x:v.x,y:v.y,z:v.z,h:v.h,sp:Math.abs(v.vf),og:1,vi:v.vid,sn:P.seat,vf:v.vf,st:v.steer}:{x:P.x,y:P.y,z:P.z,h:P.h,sp:P.speed,og:P.onGround?1:0,vi:-1,sn:0,vf:0,st:0};
-    ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st),rb:P.bus?P.bus.b.id*100+P.bus.seat:-1})); },
+    ws.send(JSON.stringify({t:'s',x:q(o.x),y:q(o.y),z:q(o.z),h:q(o.h),sp:q(o.sp),og:o.og,vi:o.vi,sn:o.sn,vf:q(o.vf),st:q(o.st),rb:P.bus?P.bus.b.id*100+P.bus.seat:-1,vt:v?v.type:''})); },
   update(dt){ if(!this.on) return; this.voiceUpdate(dt); this.sendAcc+=dt; if(this.sendAcc>=0.083&&Game.playing){ this.sendAcc=0; this.sendState(); }
     const now=performance.now(), cam=Game.camera, k=1-Math.exp(-14*dt); this.infoT=(this.infoT||0)-dt; if(this.infoT<=0){ this.infoT=1; this.setInfo(); this.renderPeople(); }
     for(const [id,r] of this.remote){ if(now-r.seen>2500){ this.drop(r); this.remote.delete(id); continue; }
@@ -3227,27 +3228,38 @@ const Eco={ ready:false, cash:0, xp:0, level:1, jobs:0, owned:[], outfit:{}, spo
       if(first) this.buildMarks(); this.renderHud(); this.renderMission();
       if(m.fresh&&Game.playing){ const s=this.spots.find(x=>x.id==='nazeer'); if(s){ Game.teleport(s.x-6,s.z-4,0,true); } this.showCard('WELCOME TO KOZHIKODE','<div style="font:600 .9rem var(--text);max-width:300px">Earn money by taking jobs around the city. Look for the job markers on your map.<br><br><b>Starter goal:</b> earn your first ₹5,000.<br>Talk to <b>Nazeer</b> right here on Mavoor Road.</div>',9); }
       if(this.shopOpen) this.openShop(this.shopOpen); break; }
-    case 'mission': this.mission=m.mission; this.route=null; this.renderMission(); if(m.note) UI.toast(m.note,3); Audio_.beep&&Audio_.beep(660,880,0.12,0.05,0); break;
-    case 'done': { this.mission=null; this.route=null; this.renderMission(); const up=m.level>this.level; this.level=m.level; this.money(m.cash); this.jobs=m.jobs; this.xp+=m.xp;
+    case 'mission': this.mission=m.mission; this.route=null; this.renderMission(); this.passenger(); if(m.note) UI.toast(m.note,3); Audio_.beep&&Audio_.beep(660,880,0.12,0.05,0); break;
+    case 'done': { this.mission=null; this.route=null; this.renderMission(); this.passenger(); const up=m.level>this.level; this.level=m.level; this.money(m.cash); this.jobs=m.jobs; this.xp+=m.xp;
       this.showCard(m.title,'<div style="font:600 .85rem var(--text);opacity:.85;margin-bottom:.4rem">'+m.item+'</div><div class="l"><span>Base</span><span>'+inr(m.base)+'</span></div>'+(m.bonus?'<div class="l"><span>Fast delivery</span><span>'+inr(m.bonus)+'</span></div>':'')+'<div class="l t"><span>Total</span><span>'+inr(m.total)+'</span></div><div style="margin-top:.4rem;font:700 .8rem var(--text);color:var(--gold)">+'+m.xp+' XP'+(up?' · LEVEL '+m.level+'!':'')+'</div>',5);
       Audio_.beep&&Audio_.beep(880,1320,0.25,0.06,0); if(this.cash>=6000&&!this.owned.some(i=>(this.catalog[i]||{}).kind==='vehicle')&&!this.toldScooter){ this.toldScooter=true; setTimeout(()=>UI.toast('You can afford a scooter! Visit Calicut Two Wheelers near the Railway Station.',6),5500); } break; }
-    case 'fail': this.mission=null; this.route=null; this.renderMission(); this.showCard(m.title+' FAILED','<div style="font:600 .85rem var(--text)">'+m.why+'<br>No reward. Take another job any time.</div>',4); break;
+    case 'fail': this.mission=null; this.route=null; this.renderMission(); this.passenger(); this.showCard(m.title+' FAILED','<div style="font:600 .85rem var(--text)">'+m.why+'<br>No reward. Take another job any time.</div>',4); break;
     case 'bought': this.money(m.cash); this.showCard(this.catalog[m.item]&&this.catalog[m.item].kind==='vehicle'?'VEHICLE PURCHASED':'PURCHASED','<div style="font:700 1rem var(--text)">'+m.name+'</div><div style="font:600 .8rem var(--text);opacity:.8;margin-top:.3rem">'+(this.catalog[m.item]&&this.catalog[m.item].kind==='vehicle'?'Added to your garage — open your wallet (tap ₹) to ride it.':'Now wearing it.')+'</div>',4); break;
     case 'err': UI.toast(m.text,3.5); break;
     case 'txs': this.txs=m.list; this.openWallet(true); break; } },
+  /* auto fares: the passenger waits at the pickup, then rides in seat 1 of your auto */
+  passenger(){ const m=this.mission, sc=Game.scene; if(!m||m.kind!=='auto'){ if(this.pax){ this.pax.root.parent&&this.pax.root.parent.remove(this.pax.root); this.pax=null; } return; }
+    if(!this.pax&&CHAR.ready){ this.pax=makeAvatar({o:Math.floor(Math.random()*3),shirt:pick(['#f5f5f5','#c2185b','#1565c0','#2e7d32','#f9a825']),pants:pick(['#263238','#4e342e']),skin:pick(['#8d5a3b','#a06a45','#6b3f26'])}); this.paxCtl={av:this.pax.av,speed:0,air:0,seat:1}; }
+    if(!this.pax) return; const r=this.pax.root;
+    if(m.stage===0){ sc.add(r); r.position.set(m.target.x,groundY(m.target.x,m.target.z,3),m.target.z); r.rotation.set(0,0,0); }
+    else if(Player.veh){ const v=Player.veh; seatIn(v,{g:r,J:this.pax.J,av:this.pax.av,animate:(dt,sit)=>avAnimate(this.paxCtl,dt,sit)},1); } },
   money(v){ const d=v-this.cash; this.cash=v; this.renderHud(); if(!d) return; const e=this.delta; e.textContent=(d>0?'+ ':'− ')+inr(Math.abs(d)); e.style.color=d>0?'#7CFC9A':'#ff8a80'; e.style.transition='none'; e.style.opacity=1; e.style.transform='translateY(0)'; void e.offsetWidth; e.style.transition='opacity .6s 1.8s,transform 2.4s'; e.style.opacity=0; e.style.transform='translateY(-18px)'; },
   renderHud(){ if(!this.ready) return; this.hud.style.display='block'; this.hud.innerHTML=inr(this.cash)+'<small>LEVEL '+this.level+'</small>'; },
   renderMission(){ const m=this.mission, e=this.mis; if(!m){ e.style.display='none'; return; } e.style.display='block'; const d=this.route?this.route.len:Math.hypot(m.target.x-Player.x,m.target.z-Player.z);
     const left=Math.max(0,m.limit-((performance.now()-(m._t0||(m._t0=performance.now()-(m.limit-m.left)*1000)))/1000)), mm=Math.floor(left/60), ss=String(Math.floor(left%60)).padStart(2,'0');
-    e.innerHTML='<b>'+m.title+'</b>'+(m.stage===0?'Pick up '+m.item+' · '+m.from:'Deliver to '+m.to)+'<div class="r"><span>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+'</span><span>'+(left>0?mm+':'+ss:'late — no bonus')+'</span><span>'+inr(m.base)+(m.bonus&&left>0?' +'+inr(m.bonus):'')+'</span></div>'; },
+    e.innerHTML='<b>'+m.title+'</b>'+(m.kind==='auto'?(m.stage===0?(Player.veh&&Player.veh.type==='auto'?'Pick up passenger · '+m.from:'Get in an auto-rickshaw'):'Drop passenger · '+m.to):m.stage===0?'Pick up '+m.item+' · '+m.from:'Deliver to '+m.to)+'<div class="r"><span>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+'</span><span>'+(left>0?mm+':'+ss:'late — no bonus')+'</span><span>'+inr(m.base)+(m.bonus&&left>0?' +'+inr(m.bonus):'')+'</span></div>'; },
   showCard(title,html,secs){ const c=this.card; c.innerHTML='<h3>'+title+'</h3>'+html; c.classList.add('on'); clearTimeout(this.cardT); this.cardT=setTimeout(()=>c.classList.remove('on'),(secs||4)*1000); },
   /* ---- world + map markers ---- */
-  iconTex(kind){ const c=cv(128,128), g=c.getContext('2d'); const col={food:'#e65100',dealer:'#1565c0',cloth:'#6a1b9a',dest:'#2e7d32'}[kind]||'#333';
+  col(kind){ return {food:'#e65100',dealer:'#1565c0',cloth:'#6a1b9a',dest:'#2e7d32',auto:'#f9a825'}[kind]||'#333'; },
+  badge(g,kind,x,y,r){ g.fillStyle=this.col(kind); g.beginPath(); g.arc(x,y,r,0,TAU); g.fill(); g.strokeStyle='#fff'; g.lineWidth=2; g.stroke(); this.glyph(g,kind,x,y,r/30); },
+  setWaypoint(w){ this.waypoint=w; this.route=null; this.routeT=0; if(w) UI.toast('Waypoint: '+w.name,2.5); },
+  drawRouteOn(g,S,w){ if(!this.route||!(this.mission||this.waypoint)) return; g.strokeStyle='#b388ff'; g.lineWidth=w; g.beginPath(); this.route.pts.forEach((q,i)=>{ const [x,y]=S(q[0],q[1]); if(i) g.lineTo(x,y); else g.moveTo(x,y); }); g.stroke(); },
+  iconTex(kind){ const c=cv(128,128), g=c.getContext('2d'); const col=this.col(kind);
     g.fillStyle='rgba(0,0,0,.25)'; g.beginPath(); g.arc(64,68,52,0,TAU); g.fill(); g.fillStyle=col; g.beginPath(); g.arc(64,64,52,0,TAU); g.fill(); g.lineWidth=6; g.strokeStyle='#fff'; g.stroke(); this.glyph(g,kind,64,64,1.4); return mkTex(c,false); },
   glyph(g,kind,x,y,s){ g.save(); g.translate(x,y); g.scale(s,s); g.fillStyle='#fff'; g.strokeStyle='#fff'; g.lineWidth=4; g.lineCap='round';
     if(kind==='food'){ g.beginPath(); g.arc(0,2,20,0,PI); g.closePath(); g.fill(); for(const dx of[-9,0,9]){ g.beginPath(); g.moveTo(dx,-6); g.bezierCurveTo(dx-5,-12,dx+5,-16,dx,-24); g.stroke(); } }
     else if(kind==='dealer'){ g.lineWidth=4; g.beginPath(); g.arc(-13,10,8,0,TAU); g.stroke(); g.beginPath(); g.arc(14,10,8,0,TAU); g.stroke(); g.beginPath(); g.moveTo(-13,10); g.lineTo(-2,-4); g.lineTo(12,-4); g.lineTo(14,10); g.moveTo(8,-4); g.lineTo(5,-16); g.lineTo(13,-16); g.stroke(); }
     else if(kind==='cloth'){ g.beginPath(); g.moveTo(-8,-20); g.lineTo(-22,-12); g.lineTo(-16,-2); g.lineTo(-11,-5); g.lineTo(-11,20); g.lineTo(11,20); g.lineTo(11,-5); g.lineTo(16,-2); g.lineTo(22,-12); g.lineTo(8,-20); g.quadraticCurveTo(0,-12,-8,-20); g.fill(); }
+    else if(kind==='auto'){ g.beginPath(); g.moveTo(-20,10); g.lineTo(-20,-6); g.quadraticCurveTo(-18,-18,0,-18); g.lineTo(14,-18); g.lineTo(20,-2); g.lineTo(20,10); g.closePath(); g.fill(); g.fillStyle=this.col('auto'); g.fillRect(-14,-12,12,10); g.fillStyle='#fff'; g.beginPath(); g.arc(-12,14,5,0,TAU); g.arc(12,14,5,0,TAU); g.fill(); }
     else { g.beginPath(); g.moveTo(0,22); g.bezierCurveTo(-20,0,-16,-22,0,-22); g.bezierCurveTo(16,-22,20,0,0,22); g.fill(); g.fillStyle='#2e7d32'; g.beginPath(); g.arc(0,-6,7,0,TAU); g.fill(); }
     g.restore(); },
   buildMarks(){ const sc=Game.scene; this.marks.forEach(m=>sc.remove(m)); this.marks=[]; this.tex={};
@@ -3255,8 +3267,8 @@ const Eco={ ready:false, cash:0, xp:0, level:1, jobs:0, owned:[], outfit:{}, spo
     const mk=(kind,x,z)=>{ const t=this.tex[kind]||(this.tex[kind]=this.iconTex(kind)); const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthTest:true})); sp.scale.set(1.3,1.3,1); const g=new THREE.Group(); const y=groundY(x,z,3); sp.position.set(0,2.9,0); g.add(sp); const r=ring(kind==='dest'?0x66ff99:0xffd54f); r.position.y=0.06; g.add(r); g.position.set(x,y,z); sc.add(g); this.marks.push(g); return g; };
     for(const s of this.spots) s.mark=mk(s.kind,s.x,s.z); this.target=mk('dest',0,0); this.target.visible=false; },
   nearSpot(){ if(!this.ready||Player.veh||Player.bus) return null; let b=null,bd=8; for(const s of this.spots){ const d=Math.hypot(s.x-Player.x,s.z-Player.z); if(d<bd){ bd=d; b=s; } } return b; },
-  prompt(){ const s=this.nearSpot(); if(!s) return ''; return '<kbd>E</kbd> '+(s.kind==='food'?(this.mission?'Job in progress':'Start delivery job · '+s.name):s.kind==='dealer'?'Browse vehicles · '+s.name:'Shop clothes · '+s.name); },
-  interact(){ const s=this.nearSpot(); if(!s) return false; if(s.kind==='food'){ if(this.mission) UI.toast('Finish your current job first'); else this.send({k:'accept',spot:s.id}); } else this.openShop(s.id); return true; },
+  prompt(){ const s=this.nearSpot(); if(!s) return ''; return '<kbd>E</kbd> '+(s.kind==='auto'?(this.mission?'Job in progress':'Start auto driver shift · '+s.name):s.kind==='food'?(this.mission?'Job in progress':'Start delivery job · '+s.name):s.kind==='dealer'?'Browse vehicles · '+s.name:'Shop clothes · '+s.name); },
+  interact(){ const s=this.nearSpot(); if(!s) return false; if(s.kind==='food'||s.kind==='auto'){ if(this.mission) UI.toast('Finish your current job first'); else this.send({k:'accept',spot:s.id}); } else this.openShop(s.id); return true; },
   openShop(id){ const s=this.spots.find(x=>x.id===id), e=this.shop; this.shopOpen=id; const items=Object.entries(this.catalog).filter(([,v])=>v.shop===id);
     e.innerHTML='<button class="x">✕</button><h3>'+s.name+'</h3><div style="opacity:.75;font-size:.75rem;margin-bottom:.3rem">'+s.ml+' · Wallet '+inr(this.cash)+'</div>';
     for(const [k,v] of items){ const own=this.owned.includes(k), row=document.createElement('div'); row.className='it'; const sw=document.createElement('i'); sw.className='sw'; sw.style.background=v.color||(v.look&&v.look.shirt)||'#888'; row.appendChild(sw);
@@ -3276,19 +3288,68 @@ const Eco={ ready:false, cash:0, xp:0, level:1, jobs:0, owned:[], outfit:{}, spo
   /* ---- per frame: target marker, GPS route, objective panel ---- */
   update(dt){ if(!this.ready) return; const m=this.mission; this.routeT-=dt; this.t=(this.t||0)+dt;
     for(const s of this.spots) if(s.mark) s.mark.children[0].position.y=2.9+Math.sin(this.t*2+s.x)*0.12;
+    if(this.pax&&this.paxCtl) avAnimate(this.paxCtl,dt,this.mission&&this.mission.stage===1);
     if(this.shopOpen){ const s=this.spots.find(x=>x.id===this.shopOpen); if(s&&Math.hypot(s.x-Player.x,s.z-Player.z)>14) this.closeShop(); }
-    if(!m){ this.target.visible=false; return; }
-    this.target.visible=true; this.target.position.set(m.target.x,groundY(m.target.x,m.target.z,3),m.target.z); this.target.children[0].position.y=3.2+Math.sin(this.t*3)*0.2;
-    if(this.routeT<=0){ this.routeT=1.5; const a=Buses.nearestNode(Player.x,Player.z), b=Buses.nearestNode(m.target.x,m.target.z), seq=a&&b&&a!==b?Buses.path(String(a),String(b)):null;
-      if(seq){ const pts=[[Player.x,Player.z]]; let len=0; for(const {u,e} of seq){ let ps=e.pts.map(q=>[q.x,q.z]); if(String(e.a)!==String(u)) ps.reverse(); for(const q of ps) pts.push(q); } pts.push([m.target.x,m.target.z]); for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); this.route={pts,len}; }
-      else this.route={pts:[[Player.x,Player.z],[m.target.x,m.target.z]],len:Math.hypot(m.target.x-Player.x,m.target.z-Player.z)}; }
-    this.mt=(this.mt||0)-dt; if(this.mt<=0){ this.mt=0.5; this.renderMission(); } },
-  drawMap(g,sc,px,pz,R_){ if(!this.ready) return; if(this.route&&this.mission){ g.strokeStyle='#b388ff'; g.lineWidth=4; g.beginPath(); this.route.pts.forEach((q,i)=>{ if(i) g.lineTo(q[0]*sc,q[1]*sc); else g.moveTo(q[0]*sc,q[1]*sc); }); g.stroke(); }
-    const icon=(kind,x,z,r)=>{ const cx=clamp(x,px-R_*0.95,px+R_*0.95)*sc, cz=clamp(z,pz-R_*0.95,pz+R_*0.95)*sc; g.fillStyle={food:'#e65100',dealer:'#1565c0',cloth:'#6a1b9a',dest:'#2e7d32'}[kind]; g.beginPath(); g.arc(cx,cz,r,0,TAU); g.fill(); g.strokeStyle='#fff'; g.lineWidth=1.5; g.stroke(); this.glyph(g,kind,cx,cz,r/30); };
+    const tg=m?m.target:this.waypoint; if(!tg){ this.target.visible=false; return; }
+    if(!m&&Math.hypot(tg.x-Player.x,tg.z-Player.z)<15){ this.setWaypoint(null); UI.toast('You have arrived',2); return; }
+    this.target.visible=true; this.target.position.set(tg.x,groundY(tg.x,tg.z,3),tg.z); this.target.children[0].position.y=3.2+Math.sin(this.t*3)*0.2;
+    if(this.routeT<=0){ this.routeT=1.5; const a=Buses.nearestNode(Player.x,Player.z), b=Buses.nearestNode(tg.x,tg.z), seq=a&&b&&a!==b?Buses.path(String(a),String(b)):null;
+      if(seq){ const pts=[[Player.x,Player.z]]; let len=0; for(const {u,e} of seq){ let ps=e.pts.map(q=>[q.x,q.z]); if(String(e.a)!==String(u)) ps.reverse(); for(const q of ps) pts.push(q); } pts.push([tg.x,tg.z]); for(let i=1;i<pts.length;i++) len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]); this.route={pts,len}; }
+      else this.route={pts:[[Player.x,Player.z],[tg.x,tg.z]],len:Math.hypot(tg.x-Player.x,tg.z-Player.z)}; }
+    this.mt=(this.mt||0)-dt; if(this.mt<=0){ this.mt=0.5; if(m) this.renderMission(); } },
+  drawMap(g,sc,px,pz,R_){ if(!this.ready) return; this.drawRouteOn(g,(x,z)=>[x*sc,z*sc],4);
+    const icon=(kind,x,z,r)=>this.badge(g,kind,clamp(x,px-R_*0.95,px+R_*0.95)*sc,clamp(z,pz-R_*0.95,pz+R_*0.95)*sc,r);
     for(const s of this.spots) if(Math.abs(s.x-px)<R_*1.6&&Math.abs(s.z-pz)<R_*1.6) icon(s.kind,s.x,s.z,7);
-    if(this.mission) icon('dest',this.mission.target.x,this.mission.target.z,8); },
+    const tg=this.mission?this.mission.target:this.waypoint; if(tg) icon('dest',tg.x,tg.z,8); },
 };
 Eco.init();
+
+/* =====================================================================
+   BigMap: full-screen map (M / Map button). Pan by dragging, zoom with wheel/pinch/buttons, tap a place or
+   any road to SET WAYPOINT — the GPS route (Eco.route) then guides to it on the minimap and in the world.
+   ===================================================================== */
+const BigMap={ on:false, cx:0, cz:0, sc:0.35,
+  init(){ const st=document.createElement('style'); st.textContent=`#bigmap{position:absolute;inset:0;background:rgba(8,16,18,.94);display:none;pointer-events:auto;touch-action:none;z-index:60}#bigmap>canvas{width:100%;height:100%;display:block}
+#bigmap .bar{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;gap:.4rem}#bigmap button{font:700 .8rem var(--text);border:0;border-radius:8px;padding:.45rem .8rem;background:rgba(255,255,255,.9);color:#111;cursor:pointer}
+#bigmap .info{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(12,18,20,.85);border-radius:10px;padding:.5rem .9rem;font:600 .85rem var(--text);display:none;align-items:center;gap:.7rem}#bigmap .info b{color:var(--gold)}
+#bigmap .legend{position:absolute;right:12px;top:60px;background:rgba(12,18,20,.75);border-radius:10px;padding:.5rem .7rem;font:600 .72rem var(--text);line-height:1.9}`; document.head.appendChild(st);
+    const d=this.el=document.createElement('div'); d.id='bigmap'; d.innerHTML='<canvas></canvas><div class="bar"><button data-a="in">＋</button><button data-a="out">−</button><button data-a="me">Me</button><button data-a="clr">Clear waypoint</button><button data-a="x">✕ Close (M)</button></div><div class="info"></div><div class="legend"></div>';
+    document.getElementById('hud').appendChild(d); this.cv=d.querySelector('canvas'); this.g=this.cv.getContext('2d'); this.info=d.querySelector('.info');
+    d.querySelector('.legend').innerHTML=[['food','Food delivery'],['auto','Auto stand'],['dealer','Vehicle dealer'],['cloth','Clothing'],['dest','Job target / waypoint']].map(([k,t])=>'<div><canvas width="18" height="18" data-k="'+k+'" style="vertical-align:middle;margin-right:.35rem"></canvas>'+t+'</div>').join('');
+    d.querySelectorAll('.legend canvas').forEach(c=>{ const g=c.getContext('2d'); g.fillStyle=Eco.col(c.dataset.k); g.beginPath(); g.arc(9,9,8,0,TAU); g.fill(); Eco.glyph(g,c.dataset.k,9,9,0.27); });
+    d.querySelector('.bar').addEventListener('click',e=>{ const a=e.target.dataset.a; if(a==='in') this.zoom(1.4); else if(a==='out') this.zoom(1/1.4); else if(a==='me'){ this.cx=Player.x; this.cz=Player.z; } else if(a==='clr'){ Eco.setWaypoint(null); this.sel=null; this.info.style.display='none'; } else if(a==='x') this.toggle(false); this.draw(); });
+    const pts=new Map(); let moved=false, pinch=0;
+    this.cv.addEventListener('pointerdown',e=>{ this.cv.setPointerCapture(e.pointerId); pts.set(e.pointerId,[e.clientX,e.clientY]); moved=false; if(pts.size===2){ const [a,b]=[...pts.values()]; pinch=Math.hypot(a[0]-b[0],a[1]-b[1]); } });
+    this.cv.addEventListener('pointermove',e=>{ const p=pts.get(e.pointerId); if(!p) return; if(pts.size===2){ pts.set(e.pointerId,[e.clientX,e.clientY]); const [a,b]=[...pts.values()], d2=Math.hypot(a[0]-b[0],a[1]-b[1]); if(pinch){ this.zoom(d2/pinch); pinch=d2; } return; }
+      const dx=e.clientX-p[0], dy=e.clientY-p[1]; if(Math.abs(dx)+Math.abs(dy)>3) moved=true; this.cx-=dx/this.sc; this.cz-=dy/this.sc; pts.set(e.pointerId,[e.clientX,e.clientY]); this.draw(); });
+    const up=e=>{ const was=pts.size; pts.delete(e.pointerId); if(was===1&&!moved) this.tap(e.clientX,e.clientY); }; this.cv.addEventListener('pointerup',up); this.cv.addEventListener('pointercancel',e=>pts.delete(e.pointerId));
+    this.cv.addEventListener('wheel',e=>{ e.preventDefault(); this.zoom(e.deltaY<0?1.15:1/1.15); },{passive:false});
+    addEventListener('resize',()=>{ if(this.on) this.draw(); }); },
+  zoom(f){ this.sc=clamp(this.sc*f,0.08,2.5); this.draw(); },
+  toggle(on){ this.on=on===undefined?!this.on:on; if(!this.on) this.closedAt=performance.now(); this.el.style.display=this.on?'block':'none'; window.__typing=this.on; Input.k={}; if(this.on){ this.cx=Player.x; this.cz=Player.z; this.draw(); } },
+  w2s(x,z){ return [(x-this.cx)*this.sc+this.W/2,(z-this.cz)*this.sc+this.H/2]; },
+  places(){ const out=TRAVEL.map(t=>({name:t[0],x:t[1],z:t[2],kind:'place'})); for(const s of Eco.spots) out.push({name:s.name,x:s.x,z:s.z,kind:s.kind}); return out; },
+  tap(px,py){ const r=this.cv.getBoundingClientRect(), x=(px-r.left-this.W/2)/this.sc+this.cx, z=(py-r.top-this.H/2)/this.sc+this.cz;
+    let best=null,bd=22/this.sc; for(const p of this.places()){ const d=Math.hypot(p.x-x,p.z-z); if(d<bd){ bd=d; best=p; } }
+    const t=best||{name:'Dropped pin',x,z}; this.sel=t; Eco.setWaypoint({x:t.x,z:t.z,name:t.name}); const d=Math.hypot(t.x-Player.x,t.z-Player.z);
+    this.info.innerHTML='<b>'+t.name.toUpperCase()+'</b><span>'+(d>=1000?(d/1000).toFixed(1)+' km':Math.round(d)+' m')+'</span><span>Waypoint set</span>'; this.info.style.display='flex'; this.draw(); },
+  draw(){ const c=this.cv, dpr=Math.min(2,devicePixelRatio||1); this.W=c.clientWidth; this.H=c.clientHeight; c.width=this.W*dpr; c.height=this.H*dpr; const g=this.g; g.setTransform(dpr,0,0,dpr,0,0);
+    g.fillStyle='#1f423c'; g.fillRect(0,0,this.W,this.H); const S=(x,z)=>this.w2s(x,z);
+    g.fillStyle='#1c5f73'; { const [a]=S(SEA_X,0); g.fillRect(0,0,Math.max(0,a),this.H); const [,rz]=S(0,RIVER_Z); g.fillRect(a,rz,this.W,110*this.sc); }
+    g.lineCap='round'; g.lineJoin='round';
+    for(const pass of[0,1]) for(const e of EDGES){ const big=e.type==='hw'||e.type==='art'||e.type==='svc'; if((pass===1)!==big) continue; g.beginPath(); e.pts.forEach((p,i)=>{ const [x,y]=S(p.x,p.z); if(i) g.lineTo(x,y); else g.moveTo(x,y); });
+      g.strokeStyle=big?'#f6efe0':'#9fb3ad'; g.lineWidth=Math.max(1,(e.type==='hw'?14:e.type==='art'?11:e.type==='main'?7:4)*this.sc); g.stroke(); }
+    Eco.drawRouteOn(g,S,Math.max(3,8*this.sc));
+    g.font='700 12px '+FONT_EN3; g.textAlign='center';
+    for(const t of TRAVEL){ const [x,y]=S(t[1],t[2]); g.fillStyle='rgba(0,0,0,.55)'; g.fillText(t[0],x+1,y-9); g.fillStyle='#fff'; g.fillText(t[0],x,y-10); }
+    for(const s of Eco.spots){ const [x,y]=S(s.x,s.z); Eco.badge(g,s.kind,x,y,11); }
+    const tg=Eco.mission?Eco.mission.target:Eco.waypoint; if(tg){ const [x,y]=S(tg.x,tg.z); Eco.badge(g,'dest',x,y,12); }
+    for(const r of Net.remote.values()){ const [x,y]=S(r.x,r.z); g.fillStyle='#4fc3f7'; g.beginPath(); g.arc(x,y,5,0,TAU); g.fill(); }
+    { const [x,y]=S(Player.x,Player.z); g.save(); g.translate(x,y); g.rotate(PI-Player.h); g.fillStyle='#c8102e'; g.strokeStyle='#fff'; g.lineWidth=2; g.beginPath(); g.moveTo(0,-11); g.lineTo(8,9); g.lineTo(0,5); g.lineTo(-8,9); g.closePath(); g.fill(); g.stroke(); g.restore(); } },
+};
+BigMap.init();
+addEventListener('keydown',e=>{ if(BigMap.on&&(e.code==='KeyM'||e.code==='Escape')){ e.preventDefault(); e.stopPropagation(); BigMap.toggle(false); } },true);
+{ const mm=document.getElementById('map'); if(mm){ mm.style.pointerEvents='auto'; mm.style.cursor='pointer'; mm.addEventListener('pointerdown',e=>{ e.preventDefault(); if(Game.playing) BigMap.toggle(true); }); } }
 const VNAME={hatch:'car',sedan:'car',suv:'SUV',auto:'auto-rickshaw',goods:'goods auto',bus:'KSRTC bus',scooter:'scooter',bike:'motorcycle',ambulance:'ambulance',van:'van',truck:'lorry'};
 
 /* =====================================================================
@@ -3350,7 +3411,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
       const K=Input.k;
       if(Input.once('KeyT')||Input.once('Tab')){ if(Eco.mission) UI.toast('Finish or cancel your job first — fast travel cancels it'); else UI.travel(); }
       for(let i=1;i<=5;i++) if(Input.once('Digit'+i)){ const key=Object.keys(WEATHER)[i-1]; Env.set(key); UI.toast(WEATHER[key].name); }
-      if(Input.once('KeyG')) this.quality(); if(Input.once('KeyF')) document.getElementById('fps').hidden=!document.getElementById('fps').hidden; if(Input.once('KeyM')){ UI.mapOn=!UI.mapOn; UI.map.style.visibility=UI.mapOn?'visible':'hidden'; }
+      if(Input.once('KeyG')) this.quality(); if(Input.once('KeyF')) document.getElementById('fps').hidden=!document.getElementById('fps').hidden; if(Input.once('KeyM')&&performance.now()-(BigMap.closedAt||0)>300) BigMap.toggle(); if(false){ UI.mapOn=!UI.mapOn; UI.map.style.visibility=UI.mapOn?'visible':'hidden'; }
       if(Input.once('KeyC')){ const k=document.getElementById('keys'); k.classList.toggle('gone'); } if(Input.once('KeyR')) this.teleport(P.x,P.z,P.h); if(Input.once('KeyH')) Audio_.beep(410,520,0.35,0.07,0);
       if(K.ArrowLeft) Cam.look(-1.8*dt,0); if(K.ArrowRight) Cam.look(1.8*dt,0); if(K.ArrowUp) Cam.look(0,-1.1*dt); if(K.ArrowDown) Cam.look(0,1.1*dt);
       this.posT=(this.posT||0)+dt; if(this.posT>5){ this.posT=0; this.savePos(); }
