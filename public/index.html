@@ -67,6 +67,12 @@ kbd{font:600 .78rem/1 var(--text);background:var(--lime);color:var(--ink);paddin
 #micbtn{display:none;position:absolute;left:22px;bottom:240px;width:58px;height:58px;border-radius:50%;align-items:center;justify-content:center;text-align:center;font:700 .72rem/1.05 var(--display);background:rgba(10,26,28,.72);border:2px solid var(--lime);color:var(--lime);pointer-events:auto;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}#micbtn.on{background:#2e9d48;border-color:#fff}#micbtn.bad{border-color:var(--ksrtc);color:#ff9a9a}#micbtn.talk{box-shadow:0 0 0 5px rgba(46,157,72,.55)}@media (pointer:fine){#micbtn{left:18px;bottom:252px;width:auto;height:auto;border-radius:6px;padding:.4rem .7rem}}
 .nm.talk{background:#2e9d48}.nm.talk::before{content:'● ';color:#fff}
 .nm{position:absolute;left:0;top:0;pointer-events:none;font:600 .8rem var(--text);color:#fff;background:rgba(10,26,28,.65);padding:.1rem .5rem;border-radius:10px;white-space:nowrap;text-shadow:0 1px 2px #000;will-change:transform}
+/* compact glass UI */
+#keys,#prompt,#netinfo,#place{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#keys{background:rgba(12,18,20,.42);border:1px solid rgba(255,255,255,.08);border-radius:10px;font-size:.74rem;line-height:1.6;transition:opacity .6s}
+#keys.gone{opacity:0;pointer-events:none}
+#place{background:rgba(250,248,240,.72);border-left-width:4px;border-radius:8px;padding:.25rem .7rem .22rem;box-shadow:0 2px 10px rgba(0,0,0,.18)}#place-ml{font-size:1.02rem}#place-en{font-size:.62rem}
+#prompt{background:rgba(12,18,20,.55);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:.4rem .9rem;font-size:.85rem;letter-spacing:.04em;text-transform:uppercase}#prompt kbd{background:#fff;color:#111;border-radius:4px;padding:0 .35rem;margin-right:.35rem;font-weight:700}
 @media (max-width:720px){#keys{display:none}#map{width:120px;height:120px}#fps{left:150px}}
 @media (prefers-reduced-motion:reduce){#title,#toast,#start,#fade{transition:none}}
 </style>
@@ -3154,7 +3160,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     this.setQuality(this.autoQuality(),true);
     updateLOD(camera); UI.progress(1,''); UI.ready(); this.last=performance.now(); this.manual=location.search.indexOf('manual')>=0; window.__ready=true; if(this.manual) this.tick(0.03,true); else requestAnimationFrame(t=>this.loop(t));
   },
-  start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); this.teleport(START.x,START.z,START.h,true); UI.area=null; document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); },
+  start(){ if(this.playing) return; this.playing=true; document.getElementById('start').classList.add('gone'); document.getElementById('hud').hidden=false; Audio_.start(); Net.connect(); this.teleport(START.x,START.z,START.h,true); UI.area=null; document.getElementById('c').focus(); UI.toast('Walk to the red car and press E',4.5); const k=document.getElementById('keys'); k.classList.remove('min','gone'); setTimeout(()=>k.classList.add('gone'),8000); },
   /** carry: a driver travels in their vehicle (passengers go along); anyone else, or carry=false, gets out first */
   teleport(x,z,h,quiet,carry){ if(Player.bus){ Game.scene.add(Player.g); Player.bus=null; } const v=Player.veh;
     if(v&&carry&&Player.seat===0){ v.x=x; v.z=z; v.y=groundY(x,z,2); v.h=h; v.vx=v.vz=v.vf=0; v.pitch=v.roll=0; v.sync(); Player.x=x; Player.z=z; Player.y=v.y; Player.h=h; Cam.snap(Player); Cam.pitch=0.2; this.refreshWorld(x,z,quiet); return; }
@@ -3182,7 +3188,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
       if(Input.once('KeyT')||Input.once('Tab')) UI.travel();
       for(let i=1;i<=5;i++) if(Input.once('Digit'+i)){ const key=Object.keys(WEATHER)[i-1]; Env.set(key); UI.toast(WEATHER[key].name); }
       if(Input.once('KeyG')) this.quality(); if(Input.once('KeyF')) document.getElementById('fps').hidden=!document.getElementById('fps').hidden; if(Input.once('KeyM')){ UI.mapOn=!UI.mapOn; UI.map.style.visibility=UI.mapOn?'visible':'hidden'; }
-      if(Input.once('KeyC')) document.getElementById('keys').classList.toggle('min'); if(Input.once('KeyR')) this.teleport(P.x,P.z,P.h); if(Input.once('KeyH')) Audio_.beep(410,520,0.35,0.07,0);
+      if(Input.once('KeyC')){ const k=document.getElementById('keys'); k.classList.toggle('gone'); } if(Input.once('KeyR')) this.teleport(P.x,P.z,P.h); if(Input.once('KeyH')) Audio_.beep(410,520,0.35,0.07,0);
       if(K.ArrowLeft) Cam.look(-1.8*dt,0); if(K.ArrowRight) Cam.look(1.8*dt,0); if(K.ArrowUp) Cam.look(0,-1.1*dt); if(K.ArrowDown) Cam.look(0,1.1*dt);
       const eKey=Input.once('KeyE');
       if(P.veh){ const v=P.veh; if(eKey) this.exiting=true; let inp;
