@@ -29,6 +29,11 @@
 - Don't put `//` comments in the middle of minified one-line statements — it comments out the rest of the line. Check with an inline-script syntax pass before testing.
 - The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
+## Performance
+- `close` LOD group (`LOD.close`: Low 90 / Med 130 / High 180 / Ultra 260 m from chunk edge): parked vehicles (batch key `veh`, `vm_*` instances), detailed trees, props. Simple trees (`midx`) fill in beyond it. Parked vehicles always go to streaming chunks (`chunkAt`), never big landmark batches.
+- Parked and traffic cars use low-poly model variants (`public/assets/veh/low`, ~60% fewer triangles); only drivable cars use the full models; drivable cars >420 m away are hidden.
+- Profile (headless, Low): beach ~0.8M tris / 285 calls, Mavoor Road ~1.3M / 740, HiLITE ~1.55M / 410. JS per frame < 2.5 ms; cost is GPU geometry. Biggest remaining: merged building detail (`plain`).
+
 ## Street props
 - `loadProps`/`registerProps` bake owner-supplied cones, road signs, bicycles (`public/assets/props`) into instanced `INST.p_*` types. Signs at signal approaches (60%), roadwork cone rings around ~18% of manholes, bicycles at ~8% of shopfronts, KSRTC shelters at every bus route end (`Buses.shelter`).
 

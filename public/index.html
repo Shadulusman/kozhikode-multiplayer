@@ -920,7 +920,7 @@ const MATKEYS = { // key -> [material getter, lod, castShadow]
   plain:[()=>MAT.plain,'far',true], plainDS:[()=>MAT.plainDS,'far',true], glass:[()=>MAT.glass,'far',true], tile:[()=>MAT.tile,'far',true], tin:[()=>MAT.tin,'far',true],
   laterite:[()=>MAT.laterite,'far',true], concrete:[()=>MAT.concrete,'far',true], shop:[()=>MAT.shop,'near',false], sign:[()=>MAT.sign,'mid',false], ad:[()=>MAT.ad,'mid',false],
   detail:[()=>MAT.plain,'near',true], detailDS:[()=>MAT.plainDS,'near',true], curb:[()=>MAT.curb,'mid',false], paverSolid:[()=>MAT.paverSolid,'mid',false], cobbleSolid:[()=>MAT.cobbleSolid,'mid',false],
-  veh:[()=>MAT.veh,'near',true], metal:[()=>MAT.metal,'mid',true], deck:[()=>MAT.deck,'far',false], kerb:[()=>MAT.kerb,'mid',true], deckMark:[()=>MAT.deckMark,'mid',false],
+  veh:[()=>MAT.veh,'close',true], metal:[()=>MAT.metal,'mid',true], deck:[()=>MAT.deck,'far',false], kerb:[()=>MAT.kerb,'mid',true], deckMark:[()=>MAT.deckMark,'mid',false],
 };
 for(let k=0;k<8;k++) MATKEYS['fac'+k]=[()=>MAT.fac[k],'far',true];
 class Batch {
@@ -1261,9 +1261,9 @@ function buildInstGeos(){
         if(prev){ const v0=(s-1)/segs, v1=t; fr.quad(prev[1],prev[0],Cn,Lf,tint,[0,v0,0.5,v1]); fr.quad(prev[0],prev[2],Rt,Cn,tint,[0.5,v0,1,v1]); }
         prev=[Cn,Lf,Rt]; d+=Math.cos(a)*L/segs; h+=Math.sin(a)*L/segs; a-=droop*(1+t*1.6); } }
     return [{g:tr.build(),m:()=>MAT.bark,cast:true},{g:fr.build(),m:()=>MAT.frond2,depth:()=>MAT.frond2Depth,cast:true}]; };
-  INST.palmA={lod:'near',parts:palm(11,{H:10.5,bend:0.05,s:0.25,nf:20,dry:2,L:5.0,nuts:10})};
-  INST.palmB={lod:'near',parts:palm(23,{H:9.5,bend:0.32,s:-0.2,nf:18,dry:3,L:4.8,nuts:8})};
-  INST.palmC={lod:'near',parts:palm(37,{H:8.0,bend:-0.12,s:0.4,nf:22,dry:2,L:5.3,nuts:12})};
+  INST.palmA={lod:'close',parts:palm(11,{H:10.5,bend:0.05,s:0.25,nf:20,dry:2,L:5.0,nuts:10})};
+  INST.palmB={lod:'close',parts:palm(23,{H:9.5,bend:0.32,s:-0.2,nf:18,dry:3,L:4.8,nuts:8})};
+  INST.palmC={lod:'close',parts:palm(37,{H:8.0,bend:-0.12,s:0.4,nf:22,dry:2,L:5.3,nuts:12})};
   /* card-based broadleaf canopy (near LOD): crossed leaf-cluster cards on a branching trunk, normals pushed outward for soft canopy lighting */
   const cards=(gb,cx,cy,cz,rx,ry,rz,n,size,rnd)=>{ const from=gb.v; for(let i=0;i<n;i++){ const u=rnd()*TAU, v=Math.acos(2*rnd()-1)*0.85, px=cx+Math.sin(v)*Math.cos(u)*rx, py=cy+Math.cos(v)*ry*0.85, pz=cz+Math.sin(v)*Math.sin(u)*rz, s=size*(0.75+0.5*rnd()), yaw=rnd()*PI;
       for(const k of[0,1]){ const a=yaw+k*PI/2, ux=Math.cos(a)*s, uz=Math.sin(a)*s, tilt=(rnd()-0.5)*0.6*s; const sh=0.85+0.25*rnd(), col=[sh,sh*(0.95+0.1*rnd()),sh*0.9];
@@ -1273,9 +1273,9 @@ function buildInstGeos(){
   { const rnd=mulberry32(5), tr=new GB(), cn=new GB(), br=C('#5d4a3a');
     tr.mesh(cylG(0.4,0.6,4.4,10),T(0,2.2,0),br); for(const [ax,az] of [[1.6,0.4],[-1.3,1.1],[-0.3,-1.7],[0.9,-1.0],[0.2,1.6]]){ const L=4.4; tr.mesh(cylG(0.12,0.28,L,7),TR(ax*0.9,4.1+L*0.36,az*0.9,Math.atan2(az,3)*1.1,0,-Math.atan2(ax,3)*1.1),br); }
     for(const b of [[0,8.5,0,5.2,2.2,5.0,60],[3.6,7.6,1.2,3.6,1.7,3.4,26],[-3.4,7.5,2.0,3.6,1.7,3.4,26],[-1.0,7.4,-3.5,3.7,1.7,3.4,26],[2.5,7.3,-2.9,3.3,1.6,3.2,22]]) cards(cn,b[0],b[1],b[2],b[3],b[4],b[5],b[6],1.55,rnd);
-    INST.treeHi={lod:'near',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:cn.build(),m:()=>MAT.leafCard,depth:()=>MAT.leafCardDepth,cast:true,tint:true}]}; }
+    INST.treeHi={lod:'close',parts:[{g:tr.build(),m:()=>MAT.plain,cast:true},{g:cn.build(),m:()=>MAT.leafCard,depth:()=>MAT.leafCardDepth,cast:true,tint:true}]}; }
   { const rnd=mulberry32(9), cn=new GB(); cards(cn,0,0.75,0,1.0,0.7,1.0,16,0.55,rnd); cards(cn,0.45,0.9,0.3,0.6,0.5,0.6,8,0.45,rnd);
-    INST.shrubHi={lod:'near',parts:[{g:cn.build(),m:()=>MAT.leafCard,cast:false,tint:true}]}; }
+    INST.shrubHi={lod:'close',parts:[{g:cn.build(),m:()=>MAT.leafCard,cast:false,tint:true}]}; }
   { // rain tree / big roadside tree
     const tr=new GB(), cn=new GB(); const br=C('#5d4a3a');
     tr.cyl(0,0,0,0.42,0.62,4.2,br,8);
@@ -1557,7 +1557,7 @@ const _im=new THREE.Matrix4(), _ic=new THREE.Color(), STATS={};
 function finalizeBatches(scene){
   let meshes=0, tris=0;
   for(const B of BATCHES){ if(B.done) continue; B.done=true;
-    B.grp={near:new THREE.Group(),mid:new THREE.Group(),midx:new THREE.Group(),far:new THREE.Group()};
+    B.grp={close:new THREE.Group(),near:new THREE.Group(),mid:new THREE.Group(),midx:new THREE.Group(),far:new THREE.Group()};
     for(const key in B.g){ const gb=B.g[key]; if(gb.empty) continue; const [mf,lod,cast]=MATKEYS[key]; tris+=gb.i.length/3; STATS[key]=(STATS[key]||0)+gb.i.length/3; const m=new THREE.Mesh(gb.build(),mf()); m.castShadow=cast; m.receiveShadow=true; m.matrixAutoUpdate=false; B.grp[lod].add(m); meshes++; }
     B.g={};
     for(const type in B.inst){ const arr=B.inst[type], n=arr.length/10, def=INST[type]; if(!def||!n) continue; STATS['#'+type]=(STATS['#'+type]||0)+n;
@@ -1567,13 +1567,13 @@ function finalizeBatches(scene){
         m.castShadow=!!part.cast; m.receiveShadow=true; if(part.depth) m.customDepthMaterial=part.depth(); m.matrixAutoUpdate=false; B.grp[def.lod].add(m); meshes++; tris+=n*(part.g.index?part.g.index.count/3:0); } }
     B.inst={};
     for(const ex of B.extra){ B.grp[ex.lod||'near'].add(ex.mesh); meshes++; }
-    for(const k of ['near','mid','midx','far']){ if(B.grp[k].children.length){ B.grp[k].matrixAutoUpdate=false; scene.add(B.grp[k]); } }
+    for(const k of ['close','near','mid','midx','far']){ if(B.grp[k].children.length){ B.grp[k].matrixAutoUpdate=false; scene.add(B.grp[k]); } }
   }
   return {meshes,tris};
 }
-const LOD={near:270,mid:640,far:1500,scale:1};
+const LOD={near:270,mid:640,far:1500,scale:1,close:180}; // close: parked vehicles, detailed trees, props
 function updateLOD(cam){ const cx=cam.position.x, cz=cam.position.z, s=LOD.scale;
-  for(let i=0;i<BATCHES.length;i++){ const B=BATCHES[i]; if(!B.grp) continue; const d=Math.hypot(B.x-cx,B.z-cz)-B.r; B.grp.near.visible=d<LOD.near*s; B.grp.mid.visible=d<LOD.mid*s; B.grp.midx.visible=d>=LOD.near*s&&d<LOD.mid*s; B.grp.far.visible=d<LOD.far; } }
+  for(let i=0;i<BATCHES.length;i++){ const B=BATCHES[i]; if(!B.grp) continue; const d=Math.hypot(B.x-cx,B.z-cz)-B.r; B.grp.near.visible=d<LOD.near*s; B.grp.mid.visible=d<LOD.mid*s; B.grp.close.visible=d<LOD.close; B.grp.midx.visible=d>=LOD.close&&d<LOD.mid*s; B.grp.far.visible=d<LOD.far; } }
 
 /* =====================================================================
    LandmarkManager (A) — old city & coast
@@ -1593,7 +1593,7 @@ function ptree(B,type,x,z,s=1){ B.add(type,x,0,z,R(TAU),s,s,s,(type!=='palm'&&ty
 function statue(P,x,y,z,col,s=1){ P.box(x-0.14*s,y,z,0.2*s,0.9*s,0.22*s,col); P.box(x+0.14*s,y,z,0.2*s,0.9*s,0.22*s,col); P.box(x,y+0.9*s,z,0.56*s,0.75*s,0.3*s,col); P.sph(x,y+1.85*s,z,0.19*s,col); P.box(x-0.36*s,y+0.95*s,z,0.14*s,0.7*s,0.16*s,col); P.box(x+0.36*s,y+0.95*s,z+0.1*s,0.14*s,0.7*s,0.16*s,col); }
 function umbrella(D,x,z,col,r=1.5){ D.cyl(x,0,z,0.03,0.03,2.3,C('#666'),5); D.mesh(coneG(8),T(x,2.45,z,0,r,0.55,r),col); }
 function parkBus(B,type,lx,lz,rot,dest){ const [x,z]=B.W(lx,lz), wr=rot+(B.fr?B.fr.rot:0); const g=B.gb('veh'); g.xf0(); g.mesh(vehGeo(type,null,2),T(x,0,z,wr)); const s=B.gb('sign'); s.xf(x,z,wr); busSignQuads(s,type,dest); s.xf0(); if(isKSRTC(type)){ const a=B.gb('ad'); a.xf(x,z,wr); busAdQuads(a,type); a.xf0(); } addCol(x,z,VEH[type].W+0.1,VEH[type].L,wr,3.1); }
-function parkV(B,type,lx,lz,rot,col){ const [x,z]=B.W(lx,lz), wr=rot+(B.fr?B.fr.rot:0); const fr=B.fr; B.fr=null; const pm=parkModel(B,type,x,z,wr,col); B.fr=fr; if(!pm){ const g=B.gb('veh'); g.xf0(); g.mesh(vehGeo(type,col,2),T(x,0,z,wr)); } addCol(x,z,VEH[type].W+0.1,VEH[type].L,wr,VEH[type].H*0.9); }
+function parkV(B,type,lx,lz,rot,col){ const [x,z]=B.W(lx,lz), wr=rot+(B.fr?B.fr.rot:0); const fr=B.fr; B.fr=null; const pm=parkModel(B,type,x,z,wr,col); B.fr=fr; if(!pm){ const g=chunkAt(x,z).gb('veh'); g.xf0(); g.mesh(vehGeo(type,col,2),T(x,0,z,wr)); } addCol(x,z,VEH[type].W+0.1,VEH[type].L,wr,VEH[type].H*0.9); }
 function autoStand(B,lx,lz,rot,n,along){ // row of parked autos + board
   for(let i=0;i<n;i++){ const ox=along==='x'?i*1.9:0, oz=along==='x'?0:i*1.9; parkV(B,'auto',lx+ox,lz+oz,rot+R(-0.06,0.06),'#1a1a1a'); }
   const P=B.gb('detail'); const bx=lx-(along==='x'?1.6:0), bz=lz-(along==='x'?0:1.6); P.cyl(bx,0,bz,0.05,0.05,2.6,C('#555'),5);
@@ -2248,7 +2248,7 @@ const _bsg=new Map(); function busSignGeo(type,dest){ const k=type+dest; let g=_
    into one vertex-coloured geometry so parked cars, traffic and drivable cars all use it through vehGeo().
    Windows get the GLASSC marker so splitGlass() keeps them see-through. KSRTC buses stay procedural.
    ===================================================================== */
-const VM={ready:false,src:{},fit:{}};
+const VM={ready:false,src:{},low:{},fit:{}};
 const VMODELS={ // up axis / forward axis of the source file, paint material, how to fit to VEH dims
   NormalCar1:{up:'y',fwd:'+z',paint:'Blue'}, NormalCar2:{up:'y',fwd:'+z',paint:'LightBlue'}, SUV:{up:'y',fwd:'+z',paint:'White'}, SportsCar2:{up:'y',fwd:'+z',paint:'White'},
   Ambulance:{up:'y',fwd:'+z',fitAll:true}, Bus:{up:'y',fwd:'-x',paint:'Top',fitAll:true}, SchoolBus:{up:'y',fwd:'-x',fitAll:true} };
@@ -2256,10 +2256,10 @@ const VMAP={hatch:['NormalCar2'],sedan:['NormalCar1','SportsCar2'],suv:['SUV'],a
 const VNAMECOL={Windows:'#18222b',Bottom:'#2e2e30',Details:'#18181a',Bumper:'#2a2a2c',Lights:'#fff1c4',Material:'#151515',Wheel:'#151515',Red:'#c62828',Grey:'#6f7073',White:'#f1f1ee',Yellow:'#f2c21a',Black:'#111112',Top:'#1f6fd0'};
 function loadVehModels(){ return new Promise(res=>{ if(!THREE.GLTFLoader||/[?&]noveh/.test(location.search)){ res(); return; } const L=new THREE.GLTFLoader(), names=Object.keys(VMODELS); let n=names.length, fin=false;
   const done=()=>{ if(--n===0&&!fin){ fin=true; VM.ready=names.every(k=>VM.src[k]); res(); } };
-  for(const k of names) L.load('assets/veh/'+k+'.glb',g=>{ VM.src[k]=g.scene; done(); },undefined,done); setTimeout(()=>{ if(!fin){ fin=true; res(); } },15000); }); }
+  n*=2; for(const k of names){ L.load('assets/veh/'+k+'.glb',g=>{ VM.src[k]=g.scene; done(); },undefined,done); L.load('assets/veh/low/'+k+'.glb',g=>{ VM.low[k]=g.scene; done(); },undefined,done); } setTimeout(()=>{ if(!fin){ fin=true; res(); } },15000); }); }
 function vmOrient(o){ const m=new THREE.Matrix4(); if(o.up==='z') m.set(-1,0,0,0, 0,0,1,0, 0,1,0,0, 0,0,0,1); else if(o.fwd==='-x') m.set(0,0,1,0, 0,1,0,0, -1,0,0,0, 0,0,0,1); return m; }
 /** bake a model into {geo, wheels:[{x,z,r,front}]} fitted to VEH[type]; wheel meshes are skipped when noWheels===true */
-function bakeVehModel(name,type,paintHex,noWheels,split){ const o=VMODELS[name], d=VEH[type], src=VM.src[name], R=vmOrient(o); src.updateMatrixWorld(true);
+function bakeVehModel(name,type,paintHex,noWheels,split,low){ const o=VMODELS[name], d=VEH[type], src=(low&&VM.low[name])||VM.src[name], R=vmOrient(o); src.updateMatrixWorld(true);
   const parts=[], bb=new THREE.Box3(), v=new THREE.Vector3();
   src.traverse(n=>{ if(!n.isMesh) return; const mt=new THREE.Matrix4().multiplyMatrices(R,n.matrixWorld), g=n.geometry.index?n.geometry.toNonIndexed():n.geometry, p=g.attributes.position;
     for(let i=0;i<p.count;i++){ v.fromBufferAttribute(p,i).applyMatrix4(mt); bb.expandByPoint(v); } parts.push({n,mt,g,wheel:/wheel/i.test(n.name)}); });
@@ -2280,8 +2280,8 @@ function bakeVehModel(name,type,paintHex,noWheels,split){ const o=VMODELS[name],
   let paintGeo=null; if(split&&pp.length){ paintGeo=new THREE.BufferGeometry(); paintGeo.setAttribute('position',new THREE.Float32BufferAttribute(pp,3)); if(pn.length===pp.length) paintGeo.setAttribute('normal',new THREE.Float32BufferAttribute(pn,3)); else paintGeo.computeVertexNormals(); paintGeo.setAttribute('color',new THREE.Float32BufferAttribute(pc,3)); smoothNormals(paintGeo,40); const pi=[]; for(let i=0;i<pp.length/3;i++) pi.push(i); paintGeo.setIndex(pi); }
   return {geo,wheels,paintGeo}; }
 /** parked model cars are instanced per streaming chunk (a merged copy per car would be millions of vertices): rest of the car + white paint shell tinted per instance */
-function registerVehInst(){ if(!VM.ready) return; for(const type in VMAP){ if(BUSLIV[type]) continue; for(const name of VMAP[type]){ const b=bakeVehModel(name,type,null,2,true), parts=[{g:b.geo,m:()=>MAT.veh,cast:true}]; if(b.paintGeo) parts.push({g:b.paintGeo,m:()=>MAT.vehTint||(MAT.vehTint=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.4,metalness:0.3,envMapIntensity:0.8})),cast:true,tint:true}); /* own material: instance colours need their own shader variant */ INST['vm_'+type+'_'+name]={lod:'near',parts}; } } }
-function parkModel(B,type,x,z,rot,colorHex,local){ const mn=VM.ready&&!BUSLIV[type]&&vmPick(type,colorHex); if(!mn||!INST['vm_'+type+'_'+mn]) return false; B.add1('vm_'+type+'_'+mn,x,0,z,rot,1,1,1,C(vmPaint(colorHex))); return true; }
+function registerVehInst(){ if(!VM.ready) return; for(const type in VMAP){ if(BUSLIV[type]) continue; for(const name of VMAP[type]){ const b=bakeVehModel(name,type,null,2,true,true), parts=[{g:b.geo,m:()=>MAT.veh,cast:true}]; if(b.paintGeo) parts.push({g:b.paintGeo,m:()=>MAT.vehTint||(MAT.vehTint=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.4,metalness:0.3,envMapIntensity:0.8})),cast:true,tint:true}); /* own material: instance colours need their own shader variant */ INST['vm_'+type+'_'+name]={lod:'close',parts}; } } }
+function parkModel(B,type,x,z,rot,colorHex,local){ const mn=VM.ready&&!BUSLIV[type]&&vmPick(type,colorHex); if(!mn||!INST['vm_'+type+'_'+mn]) return false; chunkAt(x,z).add1('vm_'+type+'_'+mn,x,0,z,rot,1,1,1,C(vmPaint(colorHex))); /* streaming chunk, so the close LOD works even inside big landmark batches */ return true; }
 const VPAINT=['#b71c1c','#0d47a1','#1b5e20','#f5f5f5','#212121','#9e9e9e','#e65100','#4a148c','#795548','#c62828','#1565c0','#fafafa'];
 function vmPaint(colorHex){ const h=String(colorHex||'x').split('').reduce((a,c)=>a*31+c.charCodeAt(0)|0,7); return VPAINT[Math.abs(h)%VPAINT.length]; }
 function vmPick(type,colorHex){ const l=VMAP[type]; if(!l) return null; const h=String(colorHex||type).split('').reduce((a,c)=>a+c.charCodeAt(0),0); return l[h%l.length]; }
@@ -2300,10 +2300,10 @@ function registerProps(){ for(const k in PROP.src){ const src=PROP.src[k]; src.u
       for(const gr of groups){ const mt=mats[gr.materialIndex||0], nm=(mt&&mt.name)||'', col=C((PROP.COLS[k][nm]||PROP.COLS[k][nm.replace(/\.\d+$/,'')]||'#9a9a9a'));
         const sub=new THREE.BufferGeometry(); const ng=g.index?g.toNonIndexed():g; for(const a in ng.attributes){ const at=ng.attributes[a]; sub.setAttribute(a,new THREE.BufferAttribute(at.array.slice(gr.start*at.itemSize,(gr.start+gr.count)*at.itemSize),at.itemSize)); }
         if(!sub.attributes.normal) sub.computeVertexNormals(); const m=new THREE.Matrix4().makeScale(sc,sc,sc).multiply(new THREE.Matrix4().makeTranslation(-(bb.min.x+bb.max.x)/2,-bb.min.y,-(bb.min.z+bb.max.z)/2)).multiply(n.matrixWorld); b.mesh(sub,m,col); } });
-    INST['p_'+k]={lod:'near',parts:[{g:b.build(),m:()=>MAT.plain,cast:k!=='TrafficCone'}]}; } }
+    INST['p_'+k]={lod:'close',parts:[{g:b.build(),m:()=>MAT.plain,cast:k!=='TrafficCone'}]}; } }
 function vehGeo(type,colorHex,noWheels){
   const key=type+'|'+colorHex+'|'+(noWheels===2?2:noWheels?1:0); let g=_vgCache.get(key); if(g) return g;
-  { const mn=VM.ready&&vmPick(type,colorHex); if(mn){ const paint=colorHex||(BUSLIV[type]?BUSLIV[type][0]:null); g=bakeVehModel(mn,type,BUSLIV[type]?paint:vmPaint(colorHex),noWheels).geo; _vgCache.set(key,g); return g; } }
+  { const mn=VM.ready&&vmPick(type,colorHex); if(mn){ const paint=colorHex||(BUSLIV[type]?BUSLIV[type][0]:null); g=bakeVehModel(mn,type,BUSLIV[type]?paint:vmPaint(colorHex),noWheels,false,noWheels!==true).geo; /* only cars you can drive use the full model */ _vgCache.set(key,g); return g; } }
   const b=new GB(), d=VEH[type], paint=C(colorHex||'#f2f2f2'), yel=C('#f2c200');
   if(type==='hatch') carBody(b,d,paint,{belt:0.92,hood:0.95,boot:0.1,wsRake:0.55,rearRake:0.32,cp:0.3});
   else if(type==='sedan') carBody(b,d,paint,{belt:0.9,hood:1.15,boot:0.95,wsRake:0.62,rearRake:0.62});
@@ -3191,15 +3191,15 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
   refreshWorld(x,z,quiet){
     for(const v of Traffic.list){ v.act=false; v.mesh.visible=false; } Traffic.refreshCands(x,z); for(let i=0;i<500&&Traffic.count()<Traffic.target*0.9;i++) Traffic.spawn(x,z,this.camera,true); Peds.scan=0; if(!quiet) UI.fade(); },
   /** graphics presets: render scale, shadow tier (map size / area around the player), detail distance, traffic and pedestrian density. Gameplay is unchanged. */
-  QUALITY:[ {name:'Low',pr:0.8,sh:0,LOD:0.62,traffic:34,peds:12,pedAv:5}, {name:'Medium',pr:1,sh:1024,box:60,LOD:0.8,traffic:46,peds:18,pedAv:10},
-            {name:'High',pr:1.5,sh:2048,box:95,LOD:1,traffic:60,peds:26,pedAv:18}, {name:'Ultra',pr:2,sh:4096,box:130,LOD:1.25,traffic:72,peds:34,pedAv:28} ],
+  QUALITY:[ {name:'Low',pr:0.8,sh:0,LOD:0.62,traffic:34,peds:12,pedAv:5,close:90}, {name:'Medium',pr:1,sh:1024,box:60,LOD:0.8,traffic:46,peds:18,pedAv:10,close:130},
+            {name:'High',pr:1.5,sh:2048,box:95,LOD:1,traffic:60,peds:26,pedAv:18,close:180}, {name:'Ultra',pr:2,sh:4096,box:130,LOD:1.25,traffic:72,peds:34,pedAv:28,close:260} ],
   autoQuality(){ let q=null; try{ const v=localStorage.getItem('kzk_q'); if(v!==null&&this.QUALITY[+v]) q=+v; }catch(e){}
     if(q!==null) return q; const touch=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||('ontouchstart' in window), mem=navigator.deviceMemory||8, cores=navigator.hardwareConcurrency||8;
     if(touch) return (mem<=4||cores<=4)?0:1; return (mem<=4||cores<=4)?1:2; },
   setQuality(q,quiet){ const P=this.QUALITY[q], r=this.renderer, S=Env.sun.shadow; this.q=q;
     this.prMax=Math.min(devicePixelRatio||1,P.pr); r.shadowMap.enabled=P.sh>0; Env.sun.castShadow=P.sh>0;
     if(P.sh){ if(S.mapSize.x!==P.sh){ S.mapSize.set(P.sh,P.sh); if(S.map){ S.map.dispose(); S.map=null; } } const c=S.camera; c.left=c.bottom=-P.box; c.right=c.top=P.box; c.updateProjectionMatrix(); }
-    LOD.scale=P.LOD; Traffic.target=P.traffic; Peds.ambient=P.peds; Peds.avN=P.pedAv; this.pr=this.prMax; r.setPixelRatio(this.pr); r.setSize(innerWidth,innerHeight,false);
+    LOD.scale=P.LOD; LOD.close=P.close; Traffic.target=P.traffic; Peds.ambient=P.peds; Peds.avN=P.pedAv; this.pr=this.prMax; r.setPixelRatio(this.pr); r.setSize(innerWidth,innerHeight,false);
     this.scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } }); if(!quiet) UI.toast('Graphics: '+P.name); },
   quality(){ const q=((this.q||0)+1)%this.QUALITY.length; try{ localStorage.setItem('kzk_q',q); }catch(e){} this.setQuality(q); },
   loop(t){ if(this.manual) return; requestAnimationFrame(tt=>this.loop(tt)); const dt=Math.min(0.05,Math.max(0.001,(t-this.last)/1000)); this.last=t; this.tick(dt,true); },
@@ -3221,7 +3221,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
       else if(P.bus){ if(eKey){ if(P.bus.b.dwell){ Buses.alight(); UI.fade(); } else UI.toast('Wait for the next stop'); } }
       else if(eKey&&Buses.nearestStop(P.x,P.z)){ Buses.board(Buses.nearestStop(P.x,P.z)); UI.fade(); }
       else if(eKey){ const nv=P.nearestVehicle(); if(nv){ P.enter(nv,this.scene); UI.fade(); Cam.last=-10; } }
-      for(const v of PVEH){ if(v!==P.veh) v.update(dt,null); }
+      for(const v of PVEH){ if(v!==P.veh) v.update(dt,null); v.g.visible=v===P.veh||Math.abs(v.x-P.x)+Math.abs(v.z-P.z)<420; }
       Buses.obs.length=0; Buses.update(dt,P.x,P.z,Buses.obs);
       P.update(dt,{fwd:(K.KeyW?1:0)-(K.KeyS?1:0),right:(K.KeyD?1:0)-(K.KeyA?1:0),run:!!(K.ShiftLeft||K.ShiftRight),jump:Input.once('Space')},Cam.yaw);
       if(P.edge>0){ P.edge-=dt; if(!this.edgeShown){ this.edgeShown=true; UI.toast('That is the edge of miniature Kozhikode'); setTimeout(()=>this.edgeShown=false,4000); } }
