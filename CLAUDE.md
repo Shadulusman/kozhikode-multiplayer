@@ -42,6 +42,9 @@
 - Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).
 - Board with E at a stopped bus (`Buses.board`), get off with E at a stop (`alight`). Riding players send `rb` = busId*100+seat; the server relays it in snapshots (index 11) and others see them seated.
 
+## Collisions with other players
+- Your vehicle (`vsDyn`) already collides with every PVEH, including ones others drive (their poses are in PVEH), and on foot you are pushed out of them (`Player.pushFrom`). Added: your vehicle is blocked by other players on foot (0.38 m circles), and NPC traffic treats other players and their vehicles as obstacles (pushed into `Game.obst`). Each client resolves its own player/vehicle; others' positions are authoritative from their owners.
+
 ## Saved state (per device, localStorage)
 - `kzk_name`, `kzk_look` (Net/MYLOOK), `kzk_pos` {x,z,h} saved every 5 s and on pagehide/hidden (`Game.savePos`), restored at start by `Game.loadPos` (validated inside the world and out of buildings). `?fresh` ignores it. Also `kzk_q` (graphics), `kzk_muted`.
 
@@ -74,4 +77,4 @@
 - Headless checks used so far: Playwright + Chromium with `--use-gl=swiftshader` (slow: ~1 min per page load, run pages in the background); fake mic flags `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`.
 
 ## Ideas not done yet
-remote-player vehicle collisions, 
+

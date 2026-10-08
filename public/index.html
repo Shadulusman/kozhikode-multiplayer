@@ -2423,6 +2423,7 @@ class PVehicle {
   vsDyn(){ let imp=0; const fx=Math.sin(this.h), fz=Math.cos(this.h);
     const hit=(cx,cz,cr,other)=>{ for(const o of this.co){ const px=this.x+fx*o, pz=this.z+fz*o, dx=px-cx, dz=pz-cz, rr=this.cr+cr, d2=dx*dx+dz*dz; if(d2<rr*rr&&d2>1e-6){ const dd=Math.sqrt(d2), nx=dx/dd, nz=dz/dd, pen=rr-dd; this.x+=nx*pen; this.z+=nz*pen; const vn=this.vx*nx+this.vz*nz; if(vn<0){ this.vx-=1.2*vn*nx; this.vz-=1.2*vn*nz; imp=Math.max(imp,-vn); if(other){ other.vx+=vn*nx*0.7; other.vz+=vn*nz*0.7; } } return true; } } return false; };
     for(const v of PVEH){ if(v===this||Math.abs(v.x-this.x)>14||Math.abs(v.z-this.z)>14||Math.abs(v.y-this.y)>2.5) continue; const vfx=Math.sin(v.h), vfz=Math.cos(v.h); for(const o of v.co) hit(v.x+vfx*o,v.z+vfz*o,v.cr,v); }
+    if(this.driver&&typeof Net!=='undefined'&&Net.on) for(const r of Net.remote.values()){ if(r.vi>=0||r.bus||Math.abs(r.x-this.x)>10||Math.abs(r.z-this.z)>10||Math.abs(r.y-this.y)>2.5) continue; hit(r.x,r.z,0.38,null); } // other players on foot block your vehicle
     if(typeof Traffic!=='undefined') Traffic.near(this.x,this.z,16,(t)=>{ if(Math.abs(t.y-this.y)>2.5) return; const n=t.len>6?4:(t.len>3?2:1); for(let i=0;i<n;i++){ const o=n===1?0:lerp(-t.len/2+t.wid/2,t.len/2-t.wid/2,i/(n-1)); if(hit(t.x+t.dx*o,t.z+t.dz*o,t.wid/2,null)) t.bump=1.6; } });
     return imp; }
 }
@@ -3253,6 +3254,7 @@ const Game = { playing:false, t:0, frame:0, exiting:false, obst:[], fpsAcc:0, fp
     Input.end();
     const f=this.focus, ob=this.obst; ob.length=0; if(this.playing){ if(P.veh){ const v=P.veh, fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else ob.push({x:P.x,z:P.z,y:P.y,r:0.4}); }
     Peds.obstacles(ob,f.x,f.z); for(const o of Buses.obs) ob.push(o);
+    if(Net.on) for(const r of Net.remote.values()){ if(Math.abs(r.x-f.x)>160||Math.abs(r.z-f.z)>160||r.bus) continue; const v=r.vi>=0?PVEH[r.vi]:null; if(v&&r.sn===0){ const fx=Math.sin(v.h), fz=Math.cos(v.h); for(const o of v.co) ob.push({x:v.x+fx*o,z:v.z+fz*o,y:v.y,r:v.cr}); } else if(!v) ob.push({x:r.x,z:r.z,y:r.y,r:0.4}); } // NPC traffic yields to other players too
     Traffic.update(dt,f.x,f.z,cam,ob); Train.update(dt); Peds.update(dt,f.x,f.z,this.playing?P.veh:null,cam); Net.update(dt);
     Env.update(dt,cam,f.x,f.y,f.z); if(this.frame%4===0) updateLOD(cam);
     if(this.playing){ UI.update(dt,P); if(this.frame%6===0) Audio_.update(dt*6,P,Traffic.count(),zoneAt(P.x,P.z)); }
