@@ -9,8 +9,9 @@ All files here are CC0 (public domain). Credit is given as a courtesy.
 | `tex/sand_{col,nrm,rgh}.jpg` | ambientCG — Ground 080 (1K), https://ambientcg.com/view?id=Ground080 | CC0 1.0 |
 | `tex/concrete_{col,nrm,rgh}.jpg` | ambientCG — Concrete 034 (1K), https://ambientcg.com/view?id=Concrete034 | CC0 1.0 |
 
-| `chars/male.glb`, `chars/female.glb`, `chars/hair_m.glb`, `chars/hair_f.glb` | Quaternius — Universal Base Characters (Standard), https://quaternius.itch.io/universal-base-characters (Superhero_Male/Female_FullBody, Hair_SimpleParted, Hair_Long); textures downscaled to 1K/512 | CC0 1.0 |
-| `chars/anims.glb` | Quaternius — Universal Animation Library (Standard), https://quaternius.itch.io/universal-animation-library (Idle, Walk, Jog, Sprint, Jump, Driving, Sitting clips; fingers/scale tracks stripped) | CC0 1.0 |
+| `chars/men_{casual,longsleeve,shirt,suit}.glb` | Quaternius — Animated Men pack (Smooth_Male_*), supplied by the project owner; FBX → GLB, clips Idle/Walk/Run/Jump/Sitting kept | CC0 1.0 (License.txt in pack) |
+| `veh/NormalCar1, NormalCar2, SUV, SportsCar2.glb` | Quaternius — car pack, supplied by the project owner; OBJ → GLB | CC0 1.0 (License.txt in pack) |
+| `veh/Ambulance, Bus, SchoolBus.glb` | Quaternius-style public transport pack, supplied by the project owner (no licence file included in the download — owner to confirm); OBJ → GLB | see note |
 | `ads/tripla.png` | Supplied by the project owner | — |
 
 Maps were re-encoded as JPEG (quality 78); normal maps are OpenGL convention (NormalGL).
