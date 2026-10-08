@@ -19,6 +19,7 @@
 - Fog is replaced globally (`THREE.ShaderChunk.fog_fragment`): exponential haze with desaturation; fogNear/fogFar mean start/scale, not hard limits. Default weather = Kerala 5 PM.
 - Ground PBR (`groundPBR`, `beachGround`): photo textures from `public/assets/tex`, world-space anti-tiled. Three r128 caches shader programs by `onBeforeCompile.toString()` (no `customProgramCacheKey`), so every patched material variant overrides `toString` with a unique key — do the same for new patched materials or they silently reuse another program.
 - Road dressing: raised concrete kerbs (`eKerb`, batch key `kerb`, visual only — physics/groundY unchanged), edge grime via colour-gradient strips (`eStripG`), asphalt wear in the road shader (tar patches, cracks, oil), worn paint on `MAT.mark`, manholes + drain gratings on art/main roads. Patched materials without a `map` can't use `mapTexelToLinear` — decode sRGB by hand.
+- Vegetation: `Batch.add('palm'|'tree'|'shrub')` adds a detailed near-LOD variant (`palmA/B/C`, `treeHi`, `shrubHi`: ringed bark, V-folded fronds, leaf-card canopies, `windSway` vertex wind) plus the old simple model in the new `midx` group (visible only between LOD.near and LOD.mid). Big landmark batches (r>400, e.g. the beach) hand trees to the streaming chunk; farbank/far batches use `*M` simple types.
 - The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
 ## Multiplayer rules
