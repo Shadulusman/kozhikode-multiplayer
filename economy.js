@@ -16,6 +16,7 @@ const SPOTS = [
   { id: 'nazeer', kind: 'food', name: "Nazeer's Kitchen", ml: 'നസീറിന്റെ അടുക്കള', at: 'mavoor', dx: 8, dz: 6 },
   { id: 'spice', kind: 'food', name: 'Malabar Spice', ml: 'മലബാർ സ്പൈസ്', at: 'palayam', dx: 6, dz: -8 },
   { id: 'shawaya', kind: 'food', name: 'Beach Shawaya', ml: 'ബീച്ച് ഷവായ', at: 'beach', dx: 10, dz: 12 },
+  { id: 'autostand', kind: 'auto', name: 'Railway Pre-paid Auto Stand', ml: 'പ്രീ-പെയ്ഡ് ഓട്ടോ', at: 'railway', dx: -12, dz: 12 },
   { id: 'scooters', kind: 'dealer', name: 'Calicut Two Wheelers', ml: 'കാലിക്കറ്റ് ടൂ വീലേഴ്സ്', at: 'railway', dx: 10, dz: -10 },
   { id: 'cloth', kind: 'cloth', name: 'Kasavu Textiles', ml: 'കസവ് ടെക്സ്റ്റൈൽസ്', at: 'smstreet', dx: 8, dz: 8 },
 ].map((s) => ({ ...s, x: PLACES[s.at].x + s.dx, z: PLACES[s.at].z + s.dz }));
@@ -45,7 +46,14 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
   const nextSlot = () => { for (let i = 0; i < 100; i++) if (!pvSlots.has(1000 + i)) return 1000 + i; return -1; };
 
   function offer(p, spotId) {
-    const s = SPOT[spotId]; if (!s || s.kind !== 'food') return null;
+    const s = SPOT[spotId]; if (!s) return null;
+    if (s.kind === 'auto') {   // passenger waiting somewhere in the city -> drop at another place
+      const places = Object.values(PLACES), from = places.filter((d) => dist(d, s) > 120 && dist(d, s) < 900)[Math.floor(Math.random() * 6)] || PLACES.mananchira;
+      const to = places.filter((d) => d !== from && dist(d, from) > 250 && dist(d, from) < 1500); const dest = to[Math.floor(Math.random() * to.length)], d = dist(from, dest);
+      const base = Math.min(450, Math.max(100, Math.round((80 + d * 0.25) / 10) * 10)), bonus = Math.round(base * 0.25 / 10) * 10;
+      return { kind: 'auto', giver: s.id, item: 'Passenger', pickup: { ...from, name: from.en, x: from.x + 6, z: from.z + 4 }, dest, base, bonus, limit: Math.round((dist(s, from) + d) / 7 + 90), needAuto: true };
+    }
+    if (s.kind !== 'food') return null;
     const n = p.eco.prof.jobs;
     // onboarding: first two jobs are fixed (Nazeer), then generated
     if (n === 0 && spotId === 'nazeer') return { giver: s.id, item: 'Malabar biriyani', pickup: s, dest: PLACES.mananchira, base: 500, bonus: 0, limit: 420, story: 'FIRST DELIVERY' };
@@ -55,7 +63,7 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
     const base = Math.round((180 + d * 0.22) / 10) * 10, bonus = Math.round(base * 0.2 / 10) * 10, limit = Math.round(d / 6 + 60);
     return { giver: s.id, item: FOODS[Math.floor(Math.random() * FOODS.length)], pickup: s, dest, base, bonus, limit };
   }
-  const missionView = (m) => m && { title: m.story || 'FOOD DELIVERY', item: m.item, stage: m.stage, from: m.pickup.name, to: m.dest.en, toMl: m.dest.ml,
+  const missionView = (m) => m && { kind: m.kind || 'food', title: m.story || (m.kind === 'auto' ? 'AUTO FARE' : 'FOOD DELIVERY'), item: m.item, stage: m.stage, from: m.pickup.name, to: m.dest.en, toMl: m.dest.ml,
     target: m.stage === 0 ? { x: m.pickup.x, z: m.pickup.z } : { x: m.dest.x, z: m.dest.z }, base: m.base, bonus: m.bonus, limit: m.limit, left: Math.max(0, Math.round(m.limit - (Date.now() - m.t0) / 1000)) };
 
   async function sendMe(p, extra) {
@@ -86,15 +94,16 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
       if (jump > MAX_JUMP && jump / dt > MAX_SPEED && !p.onBus) { const m = e.mission; e.mission = null; send(p.ws, { t: 'eco', k: 'fail', title: m.story || 'FOOD DELIVERY', why: 'Fast travel cancels a job in progress.' }); } }
     e.lastPos = { ...pos, t: now };
     const m = e.mission; if (!m || e.busy) return;
-    if (m.stage === 0 && dist(pos, m.pickup) < R_SPOT) { m.stage = 1; m.tPick = now; send(p.ws, { t: 'eco', k: 'mission', mission: missionView(m), note: 'Order collected — deliver to ' + m.dest.en }); return; }
+    if (m.needAuto && !(p.vi >= 0 && p.sn === 0 && p.vt === 'auto')) { if (m.stage === 0 && dist(pos, m.pickup) < R_SPOT && !m.warned) { m.warned = true; send(p.ws, { t: 'eco', k: 'err', text: 'Drive an auto-rickshaw to pick up the passenger' }); } return; }
+    if (m.stage === 0 && dist(pos, m.pickup) < R_SPOT) { m.stage = 1; m.tPick = now; send(p.ws, { t: 'eco', k: 'mission', mission: missionView(m), note: m.kind === 'auto' ? 'Passenger on board — drive to ' + m.dest.en : 'Order collected — deliver to ' + m.dest.en }); return; }
     if (m.stage === 1 && dist(pos, m.dest) < R_DROP) {
       const secs = (now - m.t0) / 1000, minSecs = dist(m.pickup, m.dest) / MAX_SPEED;       // can't be faster than a fast car
       if (secs < minSecs) { e.mission = null; send(p.ws, { t: 'eco', k: 'fail', title: 'DELIVERY', why: 'Delivery rejected.' }); log('[eco] rejected too-fast delivery', p.name, secs.toFixed(1)); return; }
       const fast = secs <= m.limit, amount = m.base + (fast ? m.bonus : 0), xp = Math.round(amount / 5);
       e.busy = true; e.mission = null;
-      try { const cash = await store.credit(e.uid, amount, xp, 'MISSION_REWARD', 'food:' + m.giver + '>' + m.dest.en);
+      try { const cash = await store.credit(e.uid, amount, xp, m.kind === 'auto' ? 'FARE' : 'MISSION_REWARD', (m.kind || 'food') + ':' + m.giver + '>' + m.dest.en);
         e.prof.cash = cash; e.prof.xp += xp; e.prof.jobs++; e.prof.rep++;
-        send(p.ws, { t: 'eco', k: 'done', title: m.story || 'DELIVERY COMPLETE', item: m.item, base: m.base, bonus: fast ? m.bonus : 0, total: amount, xp, cash, level: xpLevel(e.prof.xp), jobs: e.prof.jobs });
+        send(p.ws, { t: 'eco', k: 'done', kind: m.kind || 'food', title: m.story || (m.kind === 'auto' ? 'FARE COMPLETE' : 'DELIVERY COMPLETE'), item: m.kind === 'auto' ? m.pickup.name + ' → ' + m.dest.en : m.item, base: m.base, bonus: fast ? m.bonus : 0, total: amount, xp, cash, level: xpLevel(e.prof.xp), jobs: e.prof.jobs });
       } catch (err) { log('[eco] credit failed', err && err.message); send(p.ws, { t: 'eco', k: 'err', text: 'Could not save your reward — try again' }); }
       finally { e.busy = false; }
     }
@@ -108,8 +117,8 @@ function createEconomy({ store, send, broadcast, log = console.log }) {
       if (!near(m.spot)) return send(p.ws, { t: 'eco', k: 'err', text: 'Walk to the job marker first' });
       const o = offer(p, m.spot); if (!o) return;
       e.mission = { ...o, stage: 0, t0: Date.now() };
-      if (dist(p, o.pickup) < R_SPOT) { e.mission.stage = 1; e.mission.tPick = Date.now(); }
-      return send(p.ws, { t: 'eco', k: 'mission', mission: missionView(e.mission), note: e.mission.stage === 1 ? o.item + ' collected — deliver to ' + o.dest.en : 'Pick up: ' + o.item });
+      if (!o.needAuto && dist(p, o.pickup) < R_SPOT) { e.mission.stage = 1; e.mission.tPick = Date.now(); }
+      return send(p.ws, { t: 'eco', k: 'mission', mission: missionView(e.mission), note: o.kind === 'auto' ? 'Get in an auto and pick up your passenger at ' + o.pickup.name : e.mission.stage === 1 ? o.item + ' collected — deliver to ' + o.dest.en : 'Pick up: ' + o.item });
     }
     if (m.k === 'abandon') { e.mission = null; return send(p.ws, { t: 'eco', k: 'mission', mission: null, note: 'Job cancelled' }); }
     if (m.k === 'buy') {

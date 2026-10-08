@@ -109,7 +109,7 @@ wss.on('connection', (ws) => {
     if (m.t === 's') {
       const x = num(m.x), y = num(m.y, 1e4), z = num(m.z), h = num(m.h, 100), sp = num(m.sp, 200), vf = num(m.vf, 200), st = num(m.st, 10);
       if (x === null || y === null || z === null || h === null) return;
-      p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0; p.rb = Number.isInteger(m.rb) && m.rb >= -1 && m.rb < 100000 ? m.rb : -1;
+      p.x = x; p.y = y; p.z = z; p.h = h; p.sp = sp || 0; p.og = m.og ? 1 : 0; p.vf = vf || 0; p.st = st || 0; p.rb = Number.isInteger(m.rb) && m.rb >= -1 && m.rb < 100000 ? m.rb : -1; p.vt = typeof m.vt === 'string' ? m.vt.slice(0, 12) : '';
       let vi = Number.isInteger(m.vi) && ((m.vi >= 0 && m.vi < 500) || (m.vi >= 1000 && m.vi < 1100)) ? m.vi : -1;   // 1000+: bought vehicles
       const sn = Number.isInteger(m.sn) && m.sn >= 0 && m.sn < 8 ? m.sn : 0;
       if (vi !== p.vi || (vi >= 0 && sn !== p.sn)) {

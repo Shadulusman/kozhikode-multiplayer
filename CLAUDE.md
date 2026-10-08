@@ -63,7 +63,9 @@
 - Missions progress from server-known positions (`onMove` on each state update): pickup within 9 m, drop within 10 m, minimum time (distance / 45 m/s), position jumps >80 m cancel the job (client blocks T travel during a job). First two jobs are fixed (Nazeer: Mananchira ₹500, Beach ₹700), then generated (₹ ≈ 180 + 0.22/m, 20% fast bonus).
 - Spots (job givers, dealer, clothing) and catalog live in economy.js (`SPOTS`, `CATALOG`); new players start with ₹1,500 at Nazeer's Kitchen (Mavoor Road). First scooter ₹6,000 ≈ 10 deliveries.
 - Bought vehicles: `PVX` map + `vehById(vi)`; every PVehicle has `vid` (shared = index, bought = 1000+); only the owner may take seat 0 (server denies others).
-- Tests: `npm test` (store, incl. pg-mem Postgres), `node test/economy-e2e.js` against a running server (full loop + exploits).
+- Full map: `BigMap` (M, or tap the minimap): drag/wheel/pinch, tap a place/marker or anywhere for a waypoint (`Eco.setWaypoint`); the GPS route (`Eco.route`, road-graph Dijkstra from `Buses.path`) serves both missions and waypoints.
+- Auto-rickshaw fares: spot kind `auto` (Railway pre-paid stand, 3 drivable autos appended to SPAWN_VEH there). Server requires `p.vt==='auto'` (client sends vehicle type in state) and seat 0 for pickup and drop; fare ₹100–450 + 25% fast bonus, tx type `FARE`. Passenger NPC waits at pickup then rides seat 1 (`Eco.passenger`).
+- Tests: `npm test` (store, incl. pg-mem Postgres), `node test/economy-e2e.js`, `node test/auto-e2e.js` against a running server (full loop + exploits).
 
 ## Moderation
 - Client: People panel (button or K) lists players within 60 m with Mute / Report. Mute is by name, stored in localStorage `kzk_muted`; hides their chat and sets their voice gain to 0.
