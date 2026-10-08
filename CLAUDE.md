@@ -29,6 +29,11 @@
 - Don't put `//` comments in the middle of minified one-line statements — it comments out the rest of the line. Check with an inline-script syntax pass before testing.
 - The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
+## Mobile UI
+- Touch layout: right column Travel / Phone (`#ph-fab`, repositioned by index.html CSS) / Gfx (cycles quality); Run + Nearest vehicle hidden in vehicles, Horn only in vehicles, Jump button reads Brake while driving. Phone has a ✕ (`#ph-close`) since touch has no P/Esc. Phones default to Ultra (`autoQuality`).
+- Seated rigged men: `seatHip(v)` gives seat height; avatar y = seatHip − AV_HIP (0.40), z +0.22.
+- Model car windows are a second geometry group drawn with `MAT.carGlass` (`vehMats`); instanced parts copy `groups`.
+
 ## Performance
 - `close` LOD group (`LOD.close`: Low 90 / Med 130 / High 180 / Ultra 260 m from chunk edge): parked vehicles (batch key `veh`, `vm_*` instances), detailed trees, props. Simple trees (`midx`) fill in beyond it. Parked vehicles always go to streaming chunks (`chunkAt`), never big landmark batches.
 - Parked and traffic cars use low-poly model variants (`public/assets/veh/low`, ~60% fewer triangles); only drivable cars use the full models; drivable cars >420 m away are hidden.
@@ -40,7 +45,11 @@
 ## Route buses
 - `Buses` (index.html): 4 KSRTC routes between TRAVEL places (`ROUTES`), path found on the road graph (Dijkstra), 2 buses each, keep-left lane. Position is a pure function of the shared clock (`Net.tOff` from the server's `now` in the welcome message), so every client sees the same bus with no extra network traffic. 9 m/s, 25 s stop at each end.
 - Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).
+- Hailing: a moving bus holds locally (per-bus `delay` subtracted from the shared clock, max 20 s) while a player on foot is within 10 m, or when a rider presses E (`reqStop`). This desyncs that bus slightly from other players; riders are still shown seated in it.
 - Board with E at a stopped bus (`Buses.board`), get off with E at a stop (`alight`). Riding players send `rb` = busId*100+seat; the server relays it in snapshots (index 11) and others see them seated.
+
+## Collisions with other players
+- Your vehicle (`vsDyn`) already collides with every PVEH, including ones others drive (their poses are in PVEH), and on foot you are pushed out of them (`Player.pushFrom`). Added: your vehicle is blocked by other players on foot (0.38 m circles), and NPC traffic treats other players and their vehicles as obstacles (pushed into `Game.obst`). Each client resolves its own player/vehicle; others' positions are authoritative from their owners.
 
 ## Saved state (per device, localStorage)
 - `kzk_name`, `kzk_look` (Net/MYLOOK), `kzk_pos` {x,z,h} saved every 5 s and on pagehide/hidden (`Game.savePos`), restored at start by `Game.loadPos` (validated inside the world and out of buildings). `?fresh` ignores it. Also `kzk_q` (graphics), `kzk_muted`.
@@ -74,4 +83,4 @@
 - Headless checks used so far: Playwright + Chromium with `--use-gl=swiftshader` (slow: ~1 min per page load, run pages in the background); fake mic flags `--use-fake-device-for-media-stream --use-fake-ui-for-media-stream`.
 
 ## Ideas not done yet
-remote-player vehicle collisions, 
+
