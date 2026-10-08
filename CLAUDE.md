@@ -29,6 +29,11 @@
 - Don't put `//` comments in the middle of minified one-line statements — it comments out the rest of the line. Check with an inline-script syntax pass before testing.
 - The beach is the shared ground mesh (`MAT.ground`), not `MAT.sandDecal`; `beachGround` blends photo sand + a wet band (from `Env.seaU.uShoreX`) only inside the beach strip.
 
+## Route buses
+- `Buses` (index.html): 4 KSRTC routes between TRAVEL places (`ROUTES`), path found on the road graph (Dijkstra), 2 buses each, keep-left lane. Position is a pure function of the shared clock (`Net.tOff` from the server's `now` in the welcome message), so every client sees the same bus with no extra network traffic. 9 m/s, 25 s stop at each end.
+- Hollow `busR` body (open window band, seats), transparent glass, destination boards (canvas, Malayalam + English, switch at each end), brown-uniform driver, random passengers from a 16-avatar pool (only buses within 70 m).
+- Board with E at a stopped bus (`Buses.board`), get off with E at a stop (`alight`). Riding players send `rb` = busId*100+seat; the server relays it in snapshots (index 11) and others see them seated.
+
 ## Multiplayer rules
 - Client sends state ~12 Hz; server sends 10 Hz snapshots within 350 m.
 - Chat radius 30 m, voice connects within 25 m and hangs up past 35 m.
